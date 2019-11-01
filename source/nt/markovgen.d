@@ -18,12 +18,14 @@ import std.range;
 import std.stdio;
 import std.string;
 
-enum nameStart = "{", nameEnd = "}";
+enum nameStart = "{", nameEnd = "}", chapterStart = "<<<", chapterEnd = ">>>";
 
 void bakeBiblesMain(string[] args)
 {
     string model;
     string[] inputs;
+    ulong minThreshold = 20;
+    ulong maxThreshold = 1000;
 
     string verseThemeArg = "1-3";
     string nameArg = "1-3";
@@ -34,7 +36,13 @@ void bakeBiblesMain(string[] args)
             "V|verse-range",
                 "how many verses of context to use in verse model",
                 &verseThemeArg,
-            "n|name-range", "how many letters of context to use in name model", &nameArg);
+            "n|name-range", "how many letters of context to use in name model", &nameArg,
+            "min-threshold",
+                "minimum number of word occurrences to consider something a theme",
+                &minThreshold,
+            "max-threshold",
+                "maximum number of word occurrences to consider something a theme",
+                &maxThreshold);
 
     if (opts.helpWanted)
     {
@@ -48,6 +56,8 @@ void bakeBiblesMain(string[] args)
 
     auto verses = MarkovChain!string(Interval(verseThemeArg).all);
     ThemeModel themes;
+    themes.minOccurrences = minThreshold;
+    themes.maxOccurrences = maxThreshold;
     Bible[] bibles;
 
     foreach (input; inputs)
@@ -65,11 +75,12 @@ void bakeBiblesMain(string[] args)
         {
             foreach (chapter; book.chapters)
             {
-                verses.train(
+                auto themeSequence =
                     chapter.verses
                         .map!(x => themes.theme(x.text))
                         .filter!(x => x.length > 0)
-                        .array);
+                        .array;
+                verses.train([chapterStart] ~ themeSequence ~ [chapterEnd]);
             }
         }
     }
@@ -108,6 +119,12 @@ struct Interval
         return uniform(min, max + 1);
     }
 
+    uint uniform(TRng)(ref TRng rand)
+    {
+        import std.random : uniform;
+        return uniform(min, max + 1, rand);
+    }
+
     size_t[] all()
     {
         import std.range : iota;
@@ -124,30 +141,24 @@ void generateBibleMain(string[] args)
     string name = "Book of Squid";
     string outfile = "";
     string epubFile = "";
-    ulong minThreshold = 20;
-    ulong maxThreshold = 1000;
     ulong history = 1000;
 
     string bookArg = "8-55";
     string chapterArg = "5-50";
     string verseArg = "12-150";
+    string paragraphArg = "4-10";
     auto opts = getopt(args,
             std.getopt.config.required,
             "m|model", "model name to use", &model,
             "s|seed", "random seed", &seed,
             "n|name", "name of the Bible to generate", &name,
             "b|books", "range of books to generate", &bookArg,
+            "p|paragraphs", "range of verses per paragraph", &paragraphArg,
             "o|output", "output filename (defaults to name.json)", &outfile,
             "e|epub", "epub filename (defaults to name.epub)", &epubFile,
             "c|chapters", "range of chapters to generate per book", &chapterArg,
             "V|verses", "range of verses to generate per chapter", &verseArg,
             "t|timeout", "how long (in seconds) to spend generating", &timeout,
-            "min-threshold",
-                "minimum number of word occurrences to consider something a theme",
-                &minThreshold,
-            "max-threshold",
-                "maximum number of word occurrences to consider something a theme",
-                &maxThreshold,
             "history", "verses of history, to prevent repeats", &history);
 
     if (opts.helpWanted)
@@ -158,10 +169,13 @@ void generateBibleMain(string[] args)
 
     rndGen.seed(seed);
     tracef("seed %s", seed);
+    Random breaker;
+    breaker.seed(seed);
 
     auto bookCount = Interval(bookArg);
     auto chapterCount = Interval(chapterArg);
     auto verseCount = Interval(verseArg);
+    auto paragraphCount = Interval(paragraphArg);
 
     auto modelPath = "models/" ~ model;
 
@@ -170,6 +184,8 @@ void generateBibleMain(string[] args)
     auto names = decodeBinary!string(File(modelPath ~ "/names.chain", "r"));
     trace("loading histogram");
     auto themes = readJSON!ThemeModel(modelPath ~ "/histogram.json");
+    themes.shuffle(seed);
+    themes.historyLength = history;
     trace("loaded histogram");
 
     import std.datetime.systime;
@@ -201,6 +217,7 @@ void generateBibleMain(string[] args)
         foreach (chapternum; 0 .. numChapters)
         {
             verses.reset;
+            verses.seed(chapterStart);
             Chapter chapter;
             chapter.chapter = chapternum + 1;
             auto vv = verses.generate(verseCount.uniform)
@@ -212,7 +229,8 @@ void generateBibleMain(string[] args)
                 .map!(x => Verse(0, x))
                 .array;
             uint kept = 0;
-            foreach (v; vv)
+            ulong nextPara = paragraphCount.uniform(breaker);
+            foreach (i, v; vv)
             {
                 if (v.text.length == 0)
                 {
@@ -220,9 +238,22 @@ void generateBibleMain(string[] args)
                     // why.
                     tracef("somehow got an empty verse??");
                 }
+                else if (v.text == chapterEnd)
+                {
+                    break;
+                }
                 else
                 {
                     kept++;
+                    if (v.text.canFind("\u2029"))
+                    {
+                        nextPara = i + paragraphCount.uniform(breaker);
+                    }
+                    else if (i == nextPara)
+                    {
+                        v.text ~= "\u2029";
+                        nextPara = i + paragraphCount.uniform(breaker);
+                    }
                     v.verse = kept;
                     chapter.verses ~= v;
                 }

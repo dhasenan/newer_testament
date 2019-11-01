@@ -17,14 +17,9 @@ auto toWords(string s)
 {
     return s
         .toLower
-        .substitute!(
-            ";", "",
-            ",", "",
-            ".", "",
-            "-", "",
-            ":", "",
-            "'", "",
-            "\"", "")
+        // The goal is to disallow punctuation specifically, but this also catches, well,
+        // everything that we don't specifically want to keep.
+        .filter!((dchar x) => isAlpha(x) || x == ' ' || x == '\u2029')
         .to!string
         .splitter(' ');
 }
@@ -47,6 +42,7 @@ struct ThemeModel
 
     void build(Bible bible)
     {
+        // TODO figure out which words only appear in title case and omit them
         foreach (book; bible.books)
         foreach (chapter; book.chapters)
         foreach (verse; chapter.verses)
@@ -92,6 +88,7 @@ struct ThemeModel
 
     string theme(string verse)
     {
+        // Should we try harder to get a theme?
         auto candidates = verse
             .toWords
             .map!(x => tuple(x.idup, wordFrequency[x]))

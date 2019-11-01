@@ -9,10 +9,17 @@ import std.conv;
 import std.format;
 
 enum style = `
+div.scripture {
+    text-indent: 1em;
+    margin-bottom: 1em;
+}
 span.verseid {
     font-size: 60%;
     font-weight: bold;
     vertical-align: text-top;
+}
+h2 {
+    font-size: 120%;
 }
 `;
 
@@ -48,15 +55,18 @@ ep.Chapter toEpubChapter(Book book)
     foreach (i, c; book.chapters)
     {
         a ~= `
-    <h2>Chapter `;
+    <h2>`;
+        a ~= book.name;
+        a ~= `, Chapter `;
         a ~= (i+1).to!string;
         a ~= `</h2>
-        <div>`;
+        <div class="scripture">`;
         foreach (j, v; c.verses)
         {
             if (v.text.length == 0) assert(false, "verse had no text");
             auto p = v.text.split("\u2029");
-            if (p.length == 0) p = [v.text];
+            if (p.length == 0)
+                p = [v.text];
             a ~= format(`
           <span class="verse"><span class="verseid">%s</span>%s</span>`, j + 1, p[0]);
             foreach (part; p[1 .. $])
@@ -65,10 +75,16 @@ ep.Chapter toEpubChapter(Book book)
                 if (part.strip.length == 0) continue;
                 a ~= `
         </div>
-        <div>
+        <div class="scripture">
           <span class="verse">`;
                 a ~= part;
                 a ~= `</span>`;
+            }
+            if (v.text.endsWith("\u2029"))
+            {
+                a ~= `
+        </div>
+        <div class="scripture">`;
             }
         }
         a ~= `
