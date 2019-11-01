@@ -2,6 +2,7 @@ import std.stdio;
 
 import nt.books;
 import nt.markovgen;
+import nt.publish;
 import etc.linux.memoryerror;
 
 import arsd.dom;
@@ -29,11 +30,12 @@ void main(string[] args)
             bakeBiblesIntoChain(args[2 .. $]);
             return;
         case "gen":
-            auto bible = generateBibleFromChain(args[2]);
-            writeJSON(args[3], bible);
+            auto bible = generateBibleFromChain(args[2], args[3]);
+            writeJSON(args[3] ~ ".json", bible);
             return;
         case "format":
             auto bible = readJSON!Bible(args[2]);
+            writeEpub(bible, bible.name ~ ".epub");
             return;
         default:
             writefln("unrecognized option %s", args[1]);

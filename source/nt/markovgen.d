@@ -55,7 +55,7 @@ void bakeBiblesIntoChain(string[] args)
     f.close;
 }
 
-Bible generateBibleFromChain(string chainFile)
+Bible generateBibleFromChain(string chainFile, string name)
 {
     JSONValue c = readText(chainFile).parseJSON;
     auto verses = c["verses"].toString.decodeJSON!string;
@@ -64,19 +64,20 @@ Bible generateBibleFromChain(string chainFile)
     import std.random;
 
     Bible bible;
-    foreach (booknum; 1 .. uniform(5, 20))
+    bible.name = "The Todd Johnson Memorial Bible";
+    foreach (booknum; 1 .. uniform(5, 30))
     {
         Book book;
         import std.format : format;
         book.name = format("Book %s", booknum);
         //book.name = books.generate;
-        foreach (chapternum; 1 .. uniform(1, 10))
+        foreach (chapternum; 1 .. uniform(3, 30))
         {
             verses.reset;
             Chapter chapter;
             chapter.chapter = chapternum;
-            chapter.verses = iota(uniform(5, 10))
-                .map!(x => verses.generate(uniform(10, 25)).join(" "))
+            chapter.verses = iota(uniform(15, 100))
+                .map!(x => verses.generate(uniform(4, 25)).join(" "))
                 .enumerate
                 .map!(t => Verse(cast(uint)t[0] + 1, t[1]))
                 .array;
