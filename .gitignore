@@ -29,6 +29,7 @@ docs/
 *.epub
 log
 *.log
+*.model
 
 # Editor files
 *.swp

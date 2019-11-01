@@ -27,11 +27,10 @@ void main(string[] args)
             writeJSON("bom.json", importBoM(args[2]));
             return;
         case "bake":
-            bakeBiblesIntoChain(args[2 .. $]);
+            bakeBiblesMain(args[1..$]);
             return;
         case "gen":
-            auto bible = generateBibleFromChain(args[2], args[3]);
-            writeJSON(args[3] ~ ".json", bible);
+            generateBibleMain(args[1..$]);
             return;
         case "format":
             auto bible = readJSON!Bible(args[2]);

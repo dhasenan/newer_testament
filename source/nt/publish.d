@@ -54,13 +54,21 @@ ep.Chapter toEpubChapter(Book book)
         <div>`;
         foreach (j, v; c.verses)
         {
+            if (v.text.length == 0) assert(false, "verse had no text");
+            auto p = v.text.split("\u2029");
+            if (p.length == 0) p = [v.text];
             a ~= format(`
-        <span class="verse"><span class="verseid">%s</span>%s</span>`, j + 1, v.text);
-            if (v.text.endsWith("\u2029") && j < c.verses.length - 1)
+          <span class="verse"><span class="verseid">%s</span>%s</span>`, j + 1, p[0]);
+            foreach (part; p[1 .. $])
             {
+                import std.string : strip;
+                if (part.strip.length == 0) continue;
                 a ~= `
         </div>
-        <div>`;
+        <div>
+          <span class="verse">`;
+                a ~= part;
+                a ~= `</span>`;
             }
         }
         a ~= `

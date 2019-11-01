@@ -42,12 +42,18 @@ Bible importKJV(string path)
             }
             auto ch = m[1].to!uint;
             auto v = m[2].to!uint;
-            splat.popFront;
-            auto verse = Verse(v, splat.front.strip.replace("\n", " "));
             foreach (i; book.chapters.length .. ch)
             {
                 book.chapters ~= Chapter(cast(uint)i + 1);
             }
+
+            splat.popFront;
+            auto cleaned = splat.front
+                // Paragraph separator isn't whitespace and won't get stripped
+                .replace("\n\n", "\u2029")
+                .strip
+                .replace("\n", " ");
+            auto verse = Verse(v, cleaned);
             book.chapters[ch - 1].verses ~= verse;
             splat.popFront;
         }
