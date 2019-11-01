@@ -17,3 +17,5 @@ Stretch goals:
 * Identify names and reassign them consistently as a separate step.
 * Identify quotes. Attribute them to specific people. Make a different style of speech for each (eg
   prefer particular synonyms out of each synonym set).
+* Incorporate Catholic apocrypha
+* Incorporate Book of Mormon
