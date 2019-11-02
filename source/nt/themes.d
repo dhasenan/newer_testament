@@ -5,6 +5,7 @@ import nt.books;
 
 import jsonizer;
 
+import std.json;
 import std.algorithm;
 import std.array;
 import std.container.dlist;
@@ -16,7 +17,6 @@ import std.uni;
 auto toWords(string s)
 {
     return s
-        .toLower
         // The goal is to disallow punctuation specifically, but this also catches, well,
         // everything that we don't specifically want to keep.
         .filter!((dchar x) => isAlpha(x) || x == ' ' || x == '\u2029')
@@ -26,7 +26,6 @@ auto toWords(string s)
 
 struct ThemeModel
 {
-    mixin JsonizeMe;
     @jsonize
     {
         ulong minOccurrences = 20, maxOccurrences = 1000;
@@ -46,7 +45,7 @@ struct ThemeModel
         foreach (book; bible.books)
         foreach (chapter; book.chapters)
         foreach (verse; chapter.verses)
-        foreach (word; verse.text.toWords)
+        foreach (word; verse.text.toLower.toWords)
         {
             if (auto p = word in wordFrequency)
             {
@@ -90,7 +89,9 @@ struct ThemeModel
     {
         // Should we try harder to get a theme?
         auto candidates = verse
+            .toLower
             .toWords
+            .filter!(x => x in wordFrequency)
             .map!(x => tuple(x.idup, wordFrequency[x]))
             .filter!(t => t[1] < maxOccurrences)
             .filter!(t => t[1] > minOccurrences);
@@ -121,4 +122,47 @@ struct ThemeModel
         // Let's just call it a day.
         return "";
     }
+
+    mixin JsonizeMe;
+
+    /*
+    JSONValue toJSON()
+    {
+        JSONValue v;
+        v["minOccurrences"] = minOccurrences;
+        v["maxOccurrences"] = maxOccurrences;
+        JSONValue frequency;
+        foreach (k, v; wordFrequency)
+        {
+            frequency[k] = v;
+        }
+        v["wordFrequency"] = frequency;
+        JSONValue themes;
+        foreach (k, v; byTheme)
+        {
+            themes[k] = v.map!(x => JSONValue(x)).array;
+        }
+
+        v["byTheme"] = themes;
+        return v;
+    }
+
+    static ThemeModel loadJSON(string path)
+    {
+        import std.file : readText;
+        auto o = path.readText.parseJSON;
+        ThemeModel m;
+        m.minOccurrences = o["minOccurrences"].uinteger;
+        m.maxOccurrences = o["maxOccurrences"].uinteger;
+        foreach (k, v; o["wordFrequency"].object)
+        {
+            m.wordFrequency[k] = v.uinteger;
+        }
+        foreach (k, v; o["byTheme"].object)
+        {
+            m.byTheme[k] = v.array.map!(x => x.str).array;
+        }
+        return m;
+    }
+    */
 }

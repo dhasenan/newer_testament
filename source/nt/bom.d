@@ -17,7 +17,7 @@ Bible importBoM(string path)
     auto cvr = regex("([0-9a-zA-Z ]*) ([0-9]+):([0-9]+)\n [0-9]+ ");
     auto text = path.readText;
 
-    auto bible = Bible("Book of Mormon");
+    auto bible = new Bible("Book of Mormon");
     foreach (part; text.splitter("\n\n"))
     {
         // It might be a verse header, a verse, a book preamble, a book name, or a chapter header.
@@ -32,14 +32,14 @@ Bible importBoM(string path)
         auto t = m.post.strip;
         if (bible.books.length == 0 || bible.books[$-1].name != book)
         {
-            bible.books ~= Book(book);
+            bible.books ~= new Book(book);
         }
         if (bible.books[$-1].chapters.length == 0
                 || bible.books[$-1].chapters[$-1].chapter != chapter)
         {
-            bible.books[$-1].chapters ~= Chapter(chapter);
+            bible.books[$-1].chapters ~= new Chapter(chapter);
         }
-        bible.books[$-1].chapters[$-1].verses ~= Verse(verse, t.replace("\n", " "));
+        bible.books[$-1].chapters[$-1].verses ~= new Verse(verse, t.replace("\n", " "));
     }
     return bible;
 }

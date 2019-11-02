@@ -18,7 +18,7 @@ Bible importKJV(string path)
     auto cvr = regex("([0-9]+):([0-9]+)");
     auto text = path.readText;
 
-    auto bible = Bible("King James Bible");
+    auto bible = new Bible("King James Bible");
     Book book;
     foreach (part; sai.splitter(text, "\n\n\n"))
     {
@@ -26,8 +26,8 @@ Bible importKJV(string path)
         auto m = matchFirst(p, cvr);
         if (m.empty)
         {
-            if (book != Book.init) bible.books ~= book;
-            book = Book.init;
+            if (book) bible.books ~= book;
+            book = new Book;
             book.name = p.strip;
             continue;
         }
@@ -44,7 +44,7 @@ Bible importKJV(string path)
             auto v = m[2].to!uint;
             foreach (i; book.chapters.length .. ch)
             {
-                book.chapters ~= Chapter(cast(uint)i + 1);
+                book.chapters ~= new Chapter(cast(uint)i + 1);
             }
 
             splat.popFront;
@@ -53,7 +53,7 @@ Bible importKJV(string path)
                 .replace("\n\n", "\u2029")
                 .strip
                 .replace("\n", " ");
-            auto verse = Verse(v, cleaned);
+            auto verse = new Verse(v, cleaned);
             book.chapters[ch - 1].verses ~= verse;
             splat.popFront;
         }

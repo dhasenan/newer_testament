@@ -1,32 +1,61 @@
-/** Handler for the overall structure of the testament and its books. */
+/** Handler for the overall classure of the testament and its books. */
 module nt.books;
 import jsonizer;
 
-struct Bible
+class Bible
 {
     mixin JsonizeMe;
-    @jsonize:
-    string name;
-    Book[] books;
+    @jsonize
+    {
+        string name;
+        Book[] books;
+    }
+
+    this() {}
+    this(string name) { this.name = name; }
 }
-struct Book
+
+class Book
 {
     mixin JsonizeMe;
-    @jsonize:
-    string name;
-    Chapter[] chapters;
+    @jsonize
+    {
+        string[] dramatisPersonae;
+        string name;
+        Chapter[] chapters;
+    }
+
+    this() {}
+    this(string name) { this.name = name; }
 }
-struct Chapter
+
+class Chapter
 {
     mixin JsonizeMe;
-    @jsonize:
-    uint chapter;
-    Verse[] verses;
+    @jsonize
+    {
+        string[] dramatisPersonae;
+        uint chapter;
+        Verse[] verses;
+    }
+
+    this() {}
+    this(uint chapter) { this.chapter = chapter; }
 }
-struct Verse
+
+class Verse
 {
     mixin JsonizeMe;
-    @jsonize:
-    uint verse;
-    string text;
+    @jsonize
+    {
+        uint verse;
+        string text;
+    }
+
+    this() {}
+    this(uint verse, string text)
+    {
+        this.verse = verse;
+        this.text = text;
+    }
 }
