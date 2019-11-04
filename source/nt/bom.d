@@ -46,16 +46,3 @@ Bible toBookOfMormon(string text)
     }
     return bible;
 }
-
-class BookOfMormonInputStage : BibleInputStage
-{
-    this(string sourcefile)
-    {
-        super(sourcefile);
-    }
-
-    protected override Bible toBible(string text)
-    {
-        return toBookOfMormon(text);
-    }
-}

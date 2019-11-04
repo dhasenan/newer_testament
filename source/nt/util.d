@@ -3,6 +3,43 @@ module nt.util;
 import std.experimental.logger;
 import std.uni;
 
+struct Interval
+{
+    this(string formatted)
+    {
+        import std.conv : to;
+        import std.algorithm.iteration : splitter;
+
+        auto s = formatted.splitter('-');
+        min = s.front.to!ulong;
+        s.popFront;
+        if (s.empty)
+            max = min;
+        else
+            max = s.front.to!ulong;
+    }
+
+    ulong min, max;
+
+    ulong[] all() inout
+    {
+        import std.range : iota;
+        import std.array : array;
+        return iota(min, max + 1).array;
+    }
+
+    ulong uniform()()
+    {
+        static import std.random;
+        return std.random.uniform(min, max + 1);
+    }
+    ulong uniform(TRng)(TRng rng)
+    {
+        static import std.random;
+        return std.random.uniform(min, max + 1, rng);
+    }
+}
+
 /**
   */
 string matchCase(string cloneFrom, string cloneTo)

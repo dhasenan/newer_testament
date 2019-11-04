@@ -262,7 +262,7 @@ void generateBibleMain(string[] args)
             verses.reset;
             verses.seed(chapterStart);
             Chapter chapter = new Chapter;
-            chapter.chapter = chapternum + 1;
+            chapter.chapter = cast(uint)(chapternum + 1);
             auto vv = verses.generate(verseCount.uniform)
                 .map!(x => themes.toVerse(x))
                 // Remove whitespace
@@ -339,100 +339,5 @@ save:
     }
     tracef("building ebook at %s", epubFile);
     writeEpub(bible, epubFile);
-}
-
-
-@Named("versechain")
-MarkovChain!string buildVerseChain(@Name("themereduce") Bible bible)
-{
-    auto chain = MarkovChain!string(verseContext.all);
-    foreach (book; bible.books)
-    {
-        foreach (chapter; bible.chapters)
-        {
-            chain.train(chapter.verses.map!(x => x.text).array);
-        }
-    }
-}
-
-@Named("namechain")
-MarkovChain!string buildNameChain(@Name("named") Bible bible)
-{
-    auto chain = MarkovChain!string(bible.inputConfig.nameContext.all);
-    foreach (book; bible.books)
-        foreach (character; book.dramatisPersonae)
-            chain.train(character.split(""));
-    return chain;
-}
-
-@Named("namesGenerated")
-Bible generateName(@Name("generated") Bible bible, @Named("namechain") MarkovChain!string names)
-{
-    auto bookFactor = bible.genConfig.names.bookFactor;
-    auto chapterFactor = bible.genConfig.names.chapterFactor;
-    auto recurringCharacterFactor = bible.genConfig.recurringCharacterFactor;
-
-    ulong[Chapter] chapterRoles;
-    ulong[Book] bookRoles;
-    auto index = regex(`\[\[(\d+)\]\]`);
-    ulong totalNamesNeeded = 0;
-    foreach (i, book; bible.books)
-    {
-        ulong minRequiredPeeps = 0;
-        foreach (chapter; book.chapters)
-        {
-            ulong chapterRequiredPeeps;
-            foreach (verse; chapter.verses)
-            {
-                // Figure out how many people we need in this verse.
-                auto verseRequired =
-                    verse.text
-                        .matchAll(index)
-                        .map!(x => x[0])
-                        .array
-                        .sort
-                        .uniq
-                        .walkLength;
-
-                if (chapterRequiredPeeps < verseRequired)
-                    chapterRequiredPeeps = verseRequired;
-            }
-            chapterRoles[chapter] = cast(ulong)(chapterRequiredPeeps * chapterFactor);
-            requiredPeepsCount[chapter] = chapterRequiredPeeps;
-            if (minRequiredPeeps < chapterRequiredPeeps)
-                minRequiredPeeps = chapterRequiredPeeps;
-        }
-        bookRoles[book] = cast(ulong)(minRequiredPeeps * bookFactor);
-        // This will give some spare names because of recurring characters, but that's fine
-        totalNamesNeeded += bookRoles[book];
-    }
-
-    auto nameList = iota(totalNamesNeeded).map!((x) {
-        names.reset;
-        return names.generate(uniform(4, 10)).join("").titleCase;
-    }).array;
-    auto allNames = nameList;
-
-    foreach (i, book; bible.books)
-    {
-        if (i == 0)
-        {
-            book.dramatisPersonae = names[0 .. book.roles];
-            names = names[book.roles .. $];
-        }
-        else
-        {
-            auto recurring = cast(ulong)(book.roles * recurringCharacterFactor);
-            auto novel = book.roles - recurring;
-            book.dramatisPersonae = names[0 .. novel]
-                ~ randomSample(allNames[0 .. $ - names.length], recurring);
-            names = names[novel .. $];
-        }
-        foreach (chapter; book.chapters)
-        {
-            chapter.dramatisPersonae = randomSample(book.dramatisPersonae, chapterRoles[chapter]);
-        }
-    }
-    return bible;
 }
 

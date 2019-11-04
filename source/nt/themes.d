@@ -117,20 +117,3 @@ struct ThemeModel
     mixin JsonizeMe;
 }
 
-@Name("themecatalogue")
-ThemeModel themeCatalogue(@Name("anonymized") Bible bible)
-{
-    ThemeModel m;
-    m.build(bible);
-    return m;
-}
-
-@Name("themereduce")
-Bible reduce(@Name("anonymize") Bible bible, @Name("themecatalogue") ThemeModel model)
-{
-    foreach (verse; bible.allVerses)
-    {
-        verse.text = model.theme(verse.text);
-    }
-}
-
