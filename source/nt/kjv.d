@@ -15,8 +15,12 @@ import std.typecons;
 
 Bible importKJV(string path)
 {
+    return toKJVBible(path.readText);
+}
+
+Bible toKJVBible(string text)
+{
     auto cvr = regex("([0-9]+):([0-9]+)");
-    auto text = path.readText;
 
     auto bible = new Bible("King James Bible");
     Book book;
@@ -60,4 +64,17 @@ Bible importKJV(string path)
     }
     bible.books ~= book;
     return bible;
+}
+
+class BookOfMormonInputStage : BibleInputStage
+{
+    this(string sourcefile)
+    {
+        super(sourcefile);
+    }
+
+    protected override Bible toBible(string text)
+    {
+        return toKJVBible(text);
+    }
 }

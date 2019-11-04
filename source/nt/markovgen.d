@@ -4,6 +4,8 @@ module nt.markovgen;
 import nt.books;
 import nt.names;
 import nt.themes;
+import nt.util;
+import nt.wiktionary;
 
 import jsonizer;
 import markov;
@@ -133,42 +135,6 @@ void bakeBiblesMain(string[] args)
     names.encodeBinary(File(outpath ~ "/booknames.chain", "w"));
 }
 
-struct Interval
-{
-    this(string s)
-    {
-        import std.algorithm, std.conv;
-        auto p = s.splitter("-");
-        min = p.front.to!uint;
-        p.popFront;
-        if (p.empty)
-            max = min;
-        else
-            max = p.front.to!uint;
-    }
-
-    uint min, max;
-
-    uint uniform()
-    {
-        import std.random : uniform;
-        return uniform(min, max + 1);
-    }
-
-    uint uniform(TRng)(ref TRng rand)
-    {
-        import std.random : uniform;
-        return uniform(min, max + 1, rand);
-    }
-
-    size_t[] all()
-    {
-        import std.range : iota;
-        import std.array : array;
-        return iota(cast(size_t)min, cast(size_t)max+1).array;
-    }
-}
-
 void generateBibleMain(string[] args)
 {
     ulong timeout = 300;
@@ -179,6 +145,8 @@ void generateBibleMain(string[] args)
     string epubFile = "";
     ulong history = 1000;
     double chapterFactor = 3, bookFactor = 4;
+    string dbFilename;
+    double synonymFactor = 0.2;
 
     string bookArg = "8-55";
     string chapterArg = "5-50";
@@ -194,10 +162,15 @@ void generateBibleMain(string[] args)
             "o|output", "output filename (defaults to name.json)", &outfile,
             "e|epub", "epub filename (defaults to name.epub)", &epubFile,
             "c|chapters", "range of chapters to generate per book", &chapterArg,
-            "chapter-character-ratio", "multiplier for dramatis personae per chapter", &chapterArg,
-            "book-character-ratio", "multiplier for dramatis personae per book", &chapterArg,
+            "chapter-character-ratio", "multiplier for dramatis personae per chapter",
+            &chapterFactor,
+            "book-character-ratio", "multiplier for dramatis personae per book", &bookFactor,
             "V|verses", "range of verses to generate per chapter", &verseArg,
             "t|timeout", "how long (in seconds) to spend generating", &timeout,
+            "d|synonym-db",
+                "location of synonyms db (omit to not use synonym replacement)",
+                &dbFilename,
+            "synonym-factor", "percentage of words to replace with a synonym", &synonymFactor,
             "history", "verses of history, to prevent repeats", &history);
 
     if (opts.helpWanted)
@@ -342,15 +315,124 @@ void generateBibleMain(string[] args)
     }
 save:
     swapNames(bible, people, chapterFactor, bookFactor);
+
+    if (dbFilename)
+    {
+        rndGen.seed(seed);
+        tracef("spicing things up with synonyms");
+        auto db = new DB(dbFilename);
+        replaceSynonyms(db, bible, synonymFactor);
+        db.cleanup;
+    }
+
     if (outfile == "")
     {
         outfile = name ~ ".json";
     }
+    tracef("saving bible json to %s", outfile);
     writeJSON(outfile, bible);
+
     import nt.publish;
     if (epubFile == "")
     {
         epubFile = name ~ ".epub";
     }
+    tracef("building ebook at %s", epubFile);
     writeEpub(bible, epubFile);
 }
+
+
+@Named("versechain")
+MarkovChain!string buildVerseChain(@Name("themereduce") Bible bible)
+{
+    auto chain = MarkovChain!string(verseContext.all);
+    foreach (book; bible.books)
+    {
+        foreach (chapter; bible.chapters)
+        {
+            chain.train(chapter.verses.map!(x => x.text).array);
+        }
+    }
+}
+
+@Named("namechain")
+MarkovChain!string buildNameChain(@Name("named") Bible bible)
+{
+    auto chain = MarkovChain!string(bible.inputConfig.nameContext.all);
+    foreach (book; bible.books)
+        foreach (character; book.dramatisPersonae)
+            chain.train(character.split(""));
+    return chain;
+}
+
+@Named("namesGenerated")
+Bible generateName(@Name("generated") Bible bible, @Named("namechain") MarkovChain!string names)
+{
+    auto bookFactor = bible.genConfig.names.bookFactor;
+    auto chapterFactor = bible.genConfig.names.chapterFactor;
+    auto recurringCharacterFactor = bible.genConfig.recurringCharacterFactor;
+
+    ulong[Chapter] chapterRoles;
+    ulong[Book] bookRoles;
+    auto index = regex(`\[\[(\d+)\]\]`);
+    ulong totalNamesNeeded = 0;
+    foreach (i, book; bible.books)
+    {
+        ulong minRequiredPeeps = 0;
+        foreach (chapter; book.chapters)
+        {
+            ulong chapterRequiredPeeps;
+            foreach (verse; chapter.verses)
+            {
+                // Figure out how many people we need in this verse.
+                auto verseRequired =
+                    verse.text
+                        .matchAll(index)
+                        .map!(x => x[0])
+                        .array
+                        .sort
+                        .uniq
+                        .walkLength;
+
+                if (chapterRequiredPeeps < verseRequired)
+                    chapterRequiredPeeps = verseRequired;
+            }
+            chapterRoles[chapter] = cast(ulong)(chapterRequiredPeeps * chapterFactor);
+            requiredPeepsCount[chapter] = chapterRequiredPeeps;
+            if (minRequiredPeeps < chapterRequiredPeeps)
+                minRequiredPeeps = chapterRequiredPeeps;
+        }
+        bookRoles[book] = cast(ulong)(minRequiredPeeps * bookFactor);
+        // This will give some spare names because of recurring characters, but that's fine
+        totalNamesNeeded += bookRoles[book];
+    }
+
+    auto nameList = iota(totalNamesNeeded).map!((x) {
+        names.reset;
+        return names.generate(uniform(4, 10)).join("").titleCase;
+    }).array;
+    auto allNames = nameList;
+
+    foreach (i, book; bible.books)
+    {
+        if (i == 0)
+        {
+            book.dramatisPersonae = names[0 .. book.roles];
+            names = names[book.roles .. $];
+        }
+        else
+        {
+            auto recurring = cast(ulong)(book.roles * recurringCharacterFactor);
+            auto novel = book.roles - recurring;
+            book.dramatisPersonae = names[0 .. novel]
+                ~ randomSample(allNames[0 .. $ - names.length], recurring);
+            names = names[novel .. $];
+        }
+        foreach (chapter; book.chapters)
+        {
+            chapter.dramatisPersonae = randomSample(book.dramatisPersonae, chapterRoles[chapter]);
+        }
+    }
+    return bible;
+}
+

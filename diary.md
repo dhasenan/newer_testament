@@ -35,3 +35,59 @@ We want to whitelist a few names ("LORD", "Lord GOD", "Jesus", "Christ").
 Anyway, we pick a number of proper nouns to include in a book, then figure out subsets to include in
 each chapter. Right now I'm doing a couple of dials to see how many people to include. The base
 number is the largest number of people in one verse.
+
+## Fourth hack: synonyms
+
+The Bible is great and all, but what every writer really needs is a good thesaurus. It can really
+spice up your prose, you know?
+
+There are two thesauruses worth considering: MyThes and Wiktionary. Wiktionary also includes
+pronunciations, which will help out at a later step.
+
+I extracted the data from Wiktionary and MyThes and dumped it into a sqlite database.
+
+Unfortunately, these synonyms are only listed based on base words, not derived words. We need to
+introduce a stemming algorithm to fix that. Also it includes multi-word replacements that require
+some effort to work into the sentence, not just replacement (eg "I will vomit them out of my mouth"
+gets turned into "I will throw up them out of my mouth"). Still, the basic structure works!
+
+## Structure, workflow systems, and debugging aids
+
+For debugging purposes, I'd like to split the pipeline up somewhat. And for consistency, I'd like to
+put the parameters into a file. My idea:
+
+* Pull the parameters out into a config file
+* Turn a config file into a series of steps
+* Save the output of each step to disk
+* Make the system able to run each step independently, based only on the stuff saved to disk
+* Save any other parameters we have to disk (eg random seed)
+
+Essentially a build system.
+
+Our build system will have rules and tags. A stage has one output and zero or more inputs. An output
+is a (rule, tag) tuple. There is a canonical mapping to a filename. This somewhat emulates the
+makefile rules like `%.o: %.c`.
+
+## Fifth hack: stemming and part-of-speech tagging
+
+Prepositions are a fixed list:
+https://en.wikipedia.org/wiki/List_of_English_prepositions
+
+Each word has its own list of parts of speech. (I'd be better off using Esperanto, really...but
+Esperanto doesn't have a massive lexicon like English, so fewer synonyms available. I'd have to go
+with related terms. Probably triangulate from several other language thesauruses.)
+
+To complicate matters, there's transitivity to consider for verbs.
+
+1. Stem things using an algorithm. Tag them according to morphology, when possible. Use our
+   dictionary to detect when to stop stemming.
+2. Re-ingest wiktionary data to figure out the part of speech for each word in the dictionary.
+3. Also re-ingest to find abnormal forms of a word (eg child -> children).
+4. Generative tag system so we can map a word to a tagged root back to the word. For instance, "ate"
+   -> "eat" past, then "eat" past -> "ate". This will let us substitute roots and build them back up
+   to contextually appropriate forms of the word.
+5. Log things that we find in the text that aren't in the dictionary (and aren't names).
+6. Somehow use context to guess at parts of speech for words that we don't identify using simple
+   rules (with a high chance of inaccuracies).
+
+

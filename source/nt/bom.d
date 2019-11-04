@@ -14,9 +14,12 @@ import std.string;
 
 Bible importBoM(string path)
 {
-    auto cvr = regex("([0-9a-zA-Z ]*) ([0-9]+):([0-9]+)\n [0-9]+ ");
-    auto text = path.readText;
+    return toBookOfMormon(path.readText);
+}
 
+Bible toBookOfMormon(string text)
+{
+    auto cvr = regex("([0-9a-zA-Z ]*) ([0-9]+):([0-9]+)\n [0-9]+ ");
     auto bible = new Bible("Book of Mormon");
     foreach (part; text.splitter("\n\n"))
     {
@@ -42,4 +45,17 @@ Bible importBoM(string path)
         bible.books[$-1].chapters[$-1].verses ~= new Verse(verse, t.replace("\n", " "));
     }
     return bible;
+}
+
+class BookOfMormonInputStage : BibleInputStage
+{
+    this(string sourcefile)
+    {
+        super(sourcefile);
+    }
+
+    protected override Bible toBible(string text)
+    {
+        return toBookOfMormon(text);
+    }
 }

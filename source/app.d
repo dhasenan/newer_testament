@@ -3,6 +3,7 @@ import std.stdio;
 import nt.books;
 import nt.markovgen;
 import nt.publish;
+import nt.wiktionary;
 import etc.linux.memoryerror;
 
 import arsd.dom;
@@ -35,6 +36,9 @@ void main(string[] args)
         case "format":
             auto bible = readJSON!Bible(args[2]);
             writeEpub(bible, bible.name ~ ".epub");
+            return;
+        case "dict":
+            importMain(args[1..$]);
             return;
         default:
             writefln("unrecognized option %s", args[1]);

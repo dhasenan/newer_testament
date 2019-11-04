@@ -13,6 +13,17 @@ class Bible
 
     this() {}
     this(string name) { this.name = name; }
+
+    auto allVerses()
+    {
+        import std.algorithm, std.range;
+        return books
+            .map!(x => x.chapters)
+            .joiner()
+            .map!(x => x.verses)
+            .joiner();
+    }
+
 }
 
 class Book

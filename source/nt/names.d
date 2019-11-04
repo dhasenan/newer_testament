@@ -2,7 +2,7 @@
 module nt.names;
 
 import nt.books;
-import nt.themes : toWords;
+import nt.util : toWords, titleCase;
 
 import std.uni;
 import std.array;
@@ -23,16 +23,6 @@ void increment(T)(ref ulong[T] s, T key)
     {
         s[key] = 1;
     }
-}
-
-string titleCase(string word)
-{
-    static import std.ascii;
-    if (std.ascii.isUpper(word[0]))
-    {
-        return word;
-    }
-    return word[0..1].toUpper ~ word[1..$];
 }
 
 /** Get a histogram of names and name-like things. */
@@ -102,6 +92,7 @@ void convertNames(Bible bible, Set!string names)
     foreach (verse; chapter.verses)
     foreach (i, name; chapter.dramatisPersonae)
     {
+        // This suffers from the Scunthorpe problem, unfortunately.
         import std.format : format;
         auto rep = "[[%s]]".format(i);
         verse.text = verse.text.replace(name, rep);
@@ -186,4 +177,104 @@ void swapNames(Bible bible, string[] names, double chapterFactor, double bookFac
             }
         }
     }
+}
+
+@Name("named")
+Bible listNames(@Name("bible") Bible bible)
+{
+    bool[string] lower;
+    ulong[string] allWords;
+
+    foreach (verse; bible.allVerses)
+    {
+        foreach (word; toWords(verse.text))
+        {
+            if (word.length < 3) continue;
+            if (word[0] >= 'a' && word[0] <= 'z')
+            {
+                lower[word] = true;
+            }
+            else
+            {
+                increment(allWords, word.toLower);
+            }
+        }
+    }
+
+    foreach (book; bible.books)
+    {
+        ulong[string] inBook;
+        foreach (chapter; book.chapters)
+        {
+            ulong[string] inChapter;
+            foreach (verse; chapter.verses)
+            {
+                foreach (word; verse.text.toWords)
+                {
+                    auto l = word.toLower;
+                    if (!(l in lower))
+                    {
+                        inChapter.increment(word);
+                        inBook.increment(word);
+                    }
+                }
+            }
+            chapter.dramatisPersonae = inChapter.keys.array;
+        }
+        book.dramatisPersonae = inBook.keys.array;
+    }
+
+    return bible;
+}
+
+@Name("anonymized")
+Bible anonymize(@Name("named") Bible bible)
+{
+    foreach (verse; bible.allVerses)
+    foreach (i, name; chapter.dramatisPersonae)
+    {
+        // This suffers from the Scunthorpe problem, unfortunately.
+        import std.format : format;
+        auto rep = "[[%s]]".format(i);
+        verse.text = verse.text.replace(name, rep);
+    }
+    return bible;
+}
+
+@Name("renamed")
+Bible rename(@Name("constructed") Bible bible)
+{
+    foreach (book; bible.books)
+    {
+        foreach (chapter; book.chapters)
+        {
+            string[ulong] peeps;
+            foreach (verse; chapter.verses)
+            {
+                foreach (m; verse.text.matchAll(index))
+                {
+                    auto id = m[1].to!ulong;
+                    if (!(id in peeps))
+                    {
+                        peeps[id] = chapter.dramatisPersonae[peeps.length % $];
+                    }
+                }
+            }
+            foreach (verse; chapter.verses)
+            {
+                Appender!string munged;
+                munged.reserve(verse.text.length);
+                ulong start = 0;
+                foreach (m; verse.text.matchAll(index))
+                {
+                    munged.put(m.pre[start .. $]);
+                    start = verse.text.length - m.post.length;
+                    munged.put(peeps[m[1].to!ulong]);
+                }
+                munged.put(verse.text[start .. $]);
+                verse.text = munged.data;
+            }
+        }
+    }
+    return bible;
 }

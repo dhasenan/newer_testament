@@ -2,6 +2,7 @@
 module nt.themes;
 
 import nt.books;
+import nt.util;
 
 import jsonizer;
 
@@ -13,16 +14,6 @@ import std.conv;
 import std.string;
 import std.typecons;
 import std.uni;
-
-auto toWords(string s)
-{
-    return s
-        // The goal is to disallow punctuation specifically, but this also catches, well,
-        // everything that we don't specifically want to keep.
-        .filter!((dchar x) => isAlpha(x) || x == ' ' || x == '\u2029')
-        .to!string
-        .splitter(' ');
-}
 
 struct ThemeModel
 {
@@ -53,7 +44,7 @@ struct ThemeModel
             }
             else
             {
-                wordFrequency[word.idup] = 1;
+                wordFrequency[word] = 1;
             }
         }
         foreach (book; bible.books)
@@ -124,45 +115,22 @@ struct ThemeModel
     }
 
     mixin JsonizeMe;
-
-    /*
-    JSONValue toJSON()
-    {
-        JSONValue v;
-        v["minOccurrences"] = minOccurrences;
-        v["maxOccurrences"] = maxOccurrences;
-        JSONValue frequency;
-        foreach (k, v; wordFrequency)
-        {
-            frequency[k] = v;
-        }
-        v["wordFrequency"] = frequency;
-        JSONValue themes;
-        foreach (k, v; byTheme)
-        {
-            themes[k] = v.map!(x => JSONValue(x)).array;
-        }
-
-        v["byTheme"] = themes;
-        return v;
-    }
-
-    static ThemeModel loadJSON(string path)
-    {
-        import std.file : readText;
-        auto o = path.readText.parseJSON;
-        ThemeModel m;
-        m.minOccurrences = o["minOccurrences"].uinteger;
-        m.maxOccurrences = o["maxOccurrences"].uinteger;
-        foreach (k, v; o["wordFrequency"].object)
-        {
-            m.wordFrequency[k] = v.uinteger;
-        }
-        foreach (k, v; o["byTheme"].object)
-        {
-            m.byTheme[k] = v.array.map!(x => x.str).array;
-        }
-        return m;
-    }
-    */
 }
+
+@Name("themecatalogue")
+ThemeModel themeCatalogue(@Name("anonymized") Bible bible)
+{
+    ThemeModel m;
+    m.build(bible);
+    return m;
+}
+
+@Name("themereduce")
+Bible reduce(@Name("anonymize") Bible bible, @Name("themecatalogue") ThemeModel model)
+{
+    foreach (verse; bible.allVerses)
+    {
+        verse.text = model.theme(verse.text);
+    }
+}
+
