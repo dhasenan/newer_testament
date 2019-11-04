@@ -61,6 +61,8 @@ class Verse
     {
         uint verse;
         string text;
+        Lex[] analyzed;
+        string theme;
     }
 
     this() {}
@@ -68,5 +70,21 @@ class Verse
     {
         this.verse = verse;
         this.text = text;
+    }
+}
+
+struct Lex
+{
+    mixin JsonizeMe;
+    @jsonize
+    {
+        /// The base word, or punctuation if it's not a word
+        string word;
+        /// The inflection category, eg NN for a singular noun
+        string inflect;
+        /// Whitespace following this word
+        string whitespace;
+        /// The ID of the person this refers to, if it's a proper noun
+        ulong person;
     }
 }

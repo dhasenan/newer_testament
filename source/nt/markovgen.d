@@ -3,6 +3,7 @@ module nt.markovgen;
 
 import nt.books;
 import nt.names;
+import nt.nlp;
 import nt.themes;
 import nt.util;
 import nt.wiktionary;
@@ -56,6 +57,8 @@ void bakeBiblesMain(string[] args)
     import std.file : mkdirRecurse;
     auto outpath = "models/" ~ model;
     mkdirRecurse(outpath);
+    auto inputPath = outpath ~ "/inputs";
+    mkdirRecurse(inputPath);
 
     auto verses = MarkovChain!string(Interval(verseThemeArg).all);
     auto nameChain = MarkovChain!string(Interval(nameArg).all);
@@ -65,11 +68,13 @@ void bakeBiblesMain(string[] args)
     Bible[] bibles;
 
     ulong[string] nameHistogram;
+    auto nlp = new NLP;
     foreach (input; inputs)
     {
         auto text = input.readText;
         auto bible = fromJSONString!Bible(text);
         tracef("bible %s length %s has %s books", bible.name, text.length, bible.books.length);
+        nlp.analyze(bible);
         findNames(bible, nameHistogram);
         bibles ~= bible;
     }
@@ -86,21 +91,19 @@ void bakeBiblesMain(string[] args)
     }
     nameChain.encodeBinary(File(outpath ~ "/charnames.chain", "w"));
 
-    auto inputPath = outpath ~ "/inputs";
-    mkdirRecurse(inputPath);
     tracef("removing names to protect the guilty");
     foreach (i, bible; bibles)
     {
         convertNames(bible, nameHistogram);
-        // Save the converted forms into our model area for posterity
-        import std.format : format;
-        writeJSON(format("%s/%s.json", inputPath, i), bible);
     }
 
     tracef("finding themes");
     foreach (i, bible; bibles)
     {
         themes.build(bible);
+        // Save the converted forms into our model area for posterity
+        import std.format : format;
+        writeJSON(format("%s/%s.json", inputPath, i), bible);
     }
     writeJSON(outpath ~ "/themes.json", themes);
 
@@ -265,49 +268,40 @@ void generateBibleMain(string[] args)
             chapter.chapter = cast(uint)(chapternum + 1);
             auto vv = verses.generate(verseCount.uniform)
                 .map!(x => themes.toVerse(x))
-                // Remove whitespace
-                .map!(x => x.strip)
-                // Make sure we don't have any empty verses
-                .filter!(x => x.length > 0)
-                .map!(x => new Verse(0, x))
+                // Remove empty stuff
+                .filter!(x => x !is null)
+                .filter!(x => x.analyzed.length > 0)
                 .array;
             uint kept = 0;
             ulong nextPara = paragraphCount.uniform(breaker);
             foreach (i, v; vv)
             {
-                if (v.text.length == 0)
+                foreach (lex; v.analyzed)
                 {
-                    // This shouldn't happen. It really shouldn't. It does, though, and I don't know
-                    // why.
-                    tracef("somehow got an empty verse??");
-                }
-                else if (v.text == chapterEnd)
-                {
-                    break;
-                }
-                else
-                {
-                    kept++;
-                    if (v.text.canFind("\u2029"))
+                    if (lex.word == chapterEnd) goto nextVerse;
+                    if (lex.word == "\u2029")
                     {
                         nextPara = i + paragraphCount.uniform(breaker);
                     }
-                    else if (i == nextPara)
-                    {
-                        v.text ~= "\u2029";
-                        nextPara = i + paragraphCount.uniform(breaker);
-                    }
-                    v.verse = kept;
-                    chapter.verses ~= v;
+
                 }
+                if (i == nextPara)
+                {
+                    v.analyzed ~= Lex("\u2029", "_SP", "");
+                }
+                v.verse = cast(uint)chapter.verses.length + 1;
+                chapter.verses ~= v;
+nextVerse:
             }
             book.chapters ~= chapter;
+            /*
             if (Clock.currTime > limit)
             {
                 trace("exceeded time limit; aborting early");
                 bible.books ~= book;
                 goto save;
             }
+            */
             tracef("built book %s/%s chapter %s/%s", booknum + 1, numBooks, chapternum + 1,
                     numChapters);
         }

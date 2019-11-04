@@ -3,11 +3,18 @@ description "A generator for infinite Bible-ish works"
 authors "Neia Finch"
 copyright "Copyright © 2019, Neia Finch"
 license "MIT"
+
 dependency "markov" version="1.0.10"
 dependency "epub" version="1.1.2"
+# In case we eventually implement the NIV downloader
 dependency "arsd-official:dom" version="4.1.4"
 dependency "jsonizer" version="0.7.6"
 dependency "d2sqlite3" version="0.18.3"
+
 # We need a streaming XML parser to handle a large XML file.
 # std.xml is DOM only.
 dependency "dxml" version="0.4.1"
+
+# D doesn't have any usable NLP tools. Python does, so we'll call into Python to do the necessary.
+dependency "pyd" version="0.12.0"
+subConfiguration "pyd" "python37"

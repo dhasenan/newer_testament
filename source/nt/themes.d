@@ -15,18 +15,29 @@ import std.string;
 import std.typecons;
 import std.uni;
 
+struct StoredVerse
+{
+    mixin JsonizeMe;
+    @jsonize
+    {
+        ulong id;
+        Lex[] analyzed;
+    }
+}
+
 struct ThemeModel
 {
     @jsonize
     {
         ulong minOccurrences = 20, maxOccurrences = 1000;
         ulong[string] wordFrequency;
-        string[][string] byTheme;
+        ulong[][string] byTheme;
+        StoredVerse[] verses;
     }
 
     // LRU cache for verses used
-    DList!string byTime;
-    ulong[string] byVerse;
+    DList!ulong byTime;
+    ulong[ulong] byVerse;
     ulong count = 0;
     ulong historyLength = 500;
 
@@ -54,13 +65,15 @@ struct ThemeModel
             // TODO track number of distinct books this thing appears in
             auto t = theme(verse.text);
             if (t.length == 0) continue;
+            auto stored = StoredVerse(verses.length, verse.analyzed);
+            verses ~= stored;
             if (auto v = t in byTheme)
             {
-                (*v) ~= verse.text;
+                (*v) ~= stored.id;
             }
             else
             {
-                byTheme[t] = [verse.text];
+                byTheme[t] = [stored.id];
             }
         }
     }
@@ -90,12 +103,12 @@ struct ThemeModel
         return candidates.minElement!(x => x[1])[0];
     }
 
-    string toVerse(string theme)
+    Verse toVerse(string theme)
     {
         auto p = theme in byTheme;
-        if (p is null) return "";
-        auto verses = *p;
-        foreach (v; verses)
+        if (p is null) return null;
+        auto matches = *p;
+        foreach (v; matches)
         {
             if (v in byVerse) continue;
             byVerse[v] = count;
@@ -107,11 +120,13 @@ struct ThemeModel
                 byTime.removeFront;
                 byVerse.remove(rem);
             }
-            return v;
+            auto verse = new Verse;
+            verse.analyzed = this.verses[v].analyzed;
+            return verse;
         }
         // We didn't find anything for this theme that hasn't been used recently.
         // Let's just call it a day.
-        return "";
+        return null;
     }
 
     mixin JsonizeMe;

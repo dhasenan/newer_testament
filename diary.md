@@ -51,23 +51,6 @@ introduce a stemming algorithm to fix that. Also it includes multi-word replacem
 some effort to work into the sentence, not just replacement (eg "I will vomit them out of my mouth"
 gets turned into "I will throw up them out of my mouth"). Still, the basic structure works!
 
-## Structure, workflow systems, and debugging aids
-
-For debugging purposes, I'd like to split the pipeline up somewhat. And for consistency, I'd like to
-put the parameters into a file. My idea:
-
-* Pull the parameters out into a config file
-* Turn a config file into a series of steps
-* Save the output of each step to disk
-* Make the system able to run each step independently, based only on the stuff saved to disk
-* Save any other parameters we have to disk (eg random seed)
-
-Essentially a build system.
-
-Our build system will have rules and tags. A stage has one output and zero or more inputs. An output
-is a (rule, tag) tuple. There is a canonical mapping to a filename. This somewhat emulates the
-makefile rules like `%.o: %.c`.
-
 ## Fifth hack: stemming and part-of-speech tagging
 
 Prepositions are a fixed list:
@@ -79,15 +62,8 @@ with related terms. Probably triangulate from several other language thesauruses
 
 To complicate matters, there's transitivity to consider for verbs.
 
-1. Stem things using an algorithm. Tag them according to morphology, when possible. Use our
-   dictionary to detect when to stop stemming.
-2. Re-ingest wiktionary data to figure out the part of speech for each word in the dictionary.
-3. Also re-ingest to find abnormal forms of a word (eg child -> children).
-4. Generative tag system so we can map a word to a tagged root back to the word. For instance, "ate"
-   -> "eat" past, then "eat" past -> "ate". This will let us substitute roots and build them back up
-   to contextually appropriate forms of the word.
-5. Log things that we find in the text that aren't in the dictionary (and aren't names).
-6. Somehow use context to guess at parts of speech for words that we don't identify using simple
-   rules (with a high chance of inaccuracies).
+D doesn't have good part-of-speech tagging libraries available. I'm going to use Spacy in Python to
+break down individual verses into tagged documents. I can do this once on input and once on output.
 
-
+This gives me better tools for working with the intermediate forms, instead of using the text and
+manually splitting it and so forth.

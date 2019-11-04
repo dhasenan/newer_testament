@@ -28,36 +28,27 @@ void increment(T)(ref ulong[T] s, T key)
 /** Get a histogram of names and name-like things. */
 void findNames(Bible bible, ref ulong[string] names)
 {
-    ulong[string] allWords;
-    Set!string lower;
-
     foreach (book; bible.books)
-    foreach (chapter; book.chapters)
-    foreach (verse; chapter.verses)
-    foreach (word; toWords(verse.text))
     {
-        if (word.length < 3) continue;
-        if (word[0] >= 'a' && word[0] <= 'z')
+        ulong[string] bookPeople;
+        foreach (chapter; book.chapters)
         {
-            lower[word] = true;
+            ulong[string] chapterPeople;
+            foreach (verse; chapter.verses)
+            {
+                foreach (lex; verse.analyzed)
+                {
+                    if (lex.inflect == "NNP")
+                    {
+                        increment(names, lex.word);
+                        increment(bookPeople, lex.word);
+                        increment(chapterPeople, lex.word);
+                    }
+                }
+            }
+            chapter.dramatisPersonae = chapterPeople.keys;
         }
-        else
-        {
-            increment(allWords, word.toLower);
-        }
-    }
-
-    foreach (k, v; lower)
-    {
-        allWords.remove(k);
-    }
-
-    foreach (k, v; allWords)
-    {
-        if (k in lower)
-            continue;
-        else
-            names[k.titleCase] = v;
+        book.dramatisPersonae = bookPeople.keys;
     }
 }
 
@@ -72,18 +63,18 @@ void convertNames(Bible bible, Set!string names)
             ulong[string] chapterNames;
             foreach (verse; chapter.verses)
             {
-                foreach (word; verse.text.toWords)
+                foreach (lex; verse.analyzed)
                 {
-                    if (word in names)
+                    if (lex.word in names)
                     {
-                        bookNames.increment(word);
-                        chapterNames.increment(word);
+                        bookNames.increment(lex.word);
+                        chapterNames.increment(lex.word);
                     }
                 }
             }
-            chapter.dramatisPersonae = chapterNames.keys.array;
+            chapter.dramatisPersonae = chapterNames.keys.array.sort.array;
         }
-        book.dramatisPersonae = bookNames.keys.array;
+        book.dramatisPersonae = bookNames.keys.array.sort.array;
     }
 
     // Now alter the verses
@@ -92,10 +83,13 @@ void convertNames(Bible bible, Set!string names)
     foreach (verse; chapter.verses)
     foreach (i, name; chapter.dramatisPersonae)
     {
-        // This suffers from the Scunthorpe problem, unfortunately.
-        import std.format : format;
-        auto rep = "[[%s]]".format(i);
-        verse.text = verse.text.replace(name, rep);
+        foreach (ref Lex lex; verse.analyzed)
+        {
+            if (lex.inflect == "NNP" && lex.word == name)
+            {
+                lex.person = i;
+            }
+        }
     }
 }
 
@@ -149,31 +143,20 @@ void swapNames(Bible bible, string[] names, double chapterFactor, double bookFac
             auto count = cast(ulong)(requiredPeepsCount[chapter] * chapterFactor);
             if (count < 4) count = 4;
             chapter.dramatisPersonae = randomSample(book.dramatisPersonae, count).array;
-            string[ulong] peeps;
+            ulong[ulong] peepIds;
             foreach (verse; chapter.verses)
             {
-                foreach (m; verse.text.matchAll(index))
+                foreach (ref lex; verse.analyzed)
                 {
-                    auto id = m[1].to!ulong;
-                    if (!(id in peeps))
+                    if (lex.inflect != "NNP") continue;
+                    auto id = lex.person;
+                    if (!(id in peepIds))
                     {
-                        peeps[id] = chapter.dramatisPersonae[peeps.length % $];
+                        peepIds[id] = peepIds.length % chapter.dramatisPersonae.length;
                     }
+                    lex.person = peepIds[id];
+                    lex.word = chapter.dramatisPersonae[lex.person];
                 }
-            }
-            foreach (verse; chapter.verses)
-            {
-                Appender!string munged;
-                munged.reserve(verse.text.length);
-                ulong start = 0;
-                foreach (m; verse.text.matchAll(index))
-                {
-                    munged.put(m.pre[start .. $]);
-                    start = verse.text.length - m.post.length;
-                    munged.put(peeps[m[1].to!ulong]);
-                }
-                munged.put(verse.text[start .. $]);
-                verse.text = munged.data;
             }
         }
     }
