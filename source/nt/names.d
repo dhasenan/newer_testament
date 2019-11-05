@@ -26,8 +26,9 @@ void increment(T)(ref ulong[T] s, T key)
 }
 
 /** Get a histogram of names and name-like things. */
-void findNames(Bible bible, ref ulong[string] names)
+void findNames(Bible bible)
 {
+    ulong[string] names;
     foreach (book; bible.books)
     {
         ulong[string] bookPeople;
@@ -50,9 +51,10 @@ void findNames(Bible bible, ref ulong[string] names)
         }
         book.dramatisPersonae = bookPeople.keys;
     }
+    bible.nameHistogram = names;
 }
 
-void convertNames(Bible bible, Set!string names)
+void convertNames(Bible bible)
 {
     // Figure out what names we have in each book and chapter
     foreach (book; bible.books)
@@ -65,7 +67,7 @@ void convertNames(Bible bible, Set!string names)
             {
                 foreach (lex; verse.analyzed)
                 {
-                    if (lex.word in names)
+                    if (lex.word in bible.nameHistogram)
                     {
                         bookNames.increment(lex.word);
                         chapterNames.increment(lex.word);
@@ -162,3 +164,28 @@ void swapNames(Bible bible, string[] names, double chapterFactor, double bookFac
     }
 }
 
+void findNamesMain(string[] args)
+{
+    import std.getopt;
+    import std.stdio;
+    import jsonizer;
+
+    string input;
+    string output, histogramFile;
+    auto opts = getopt(args,
+            config.required,
+            "i|input", "input bible", &input,
+            config.required,
+            "o|output", "output directory", &output,
+            "n|names", "name histogram output", &histogramFile);
+    if (opts.helpWanted)
+    {
+        defaultGetoptPrinter("find names in the Bible", opts.options);
+        return;
+    }
+
+    auto bible = readJSON!Bible(input);
+    findNames(bible);
+    convertNames(bible);
+    writeJSON(output, bible);
+}

@@ -71,12 +71,20 @@ void bakeBiblesMain(string[] args)
     auto nlp = new NLP;
     foreach (input; inputs)
     {
-        auto text = input.readText;
-        auto bible = fromJSONString!Bible(text);
-        tracef("bible %s length %s has %s books", bible.name, text.length, bible.books.length);
-        nlp.analyze(bible);
-        findNames(bible, nameHistogram);
+        auto bible = readJSON!Bible(input);
+        tracef("bible %s has %s books", bible.name, bible.books.length);
         bibles ~= bible;
+        foreach (name, freq; bible.nameHistogram)
+        {
+            if (auto p = name in nameHistogram)
+            {
+                (*p) += freq;
+            }
+            else
+            {
+                nameHistogram[name] = freq;
+            }
+        }
     }
     tracef(
             "read %s bibles, %s names",
@@ -90,22 +98,6 @@ void bakeBiblesMain(string[] args)
         nameChain.train(name.toLower.split(""));
     }
     nameChain.encodeBinary(File(outpath ~ "/charnames.chain", "w"));
-
-    tracef("removing names to protect the guilty");
-    foreach (i, bible; bibles)
-    {
-        convertNames(bible, nameHistogram);
-    }
-
-    tracef("finding themes");
-    foreach (i, bible; bibles)
-    {
-        themes.build(bible);
-        // Save the converted forms into our model area for posterity
-        import std.format : format;
-        writeJSON(format("%s/%s.json", inputPath, i), bible);
-    }
-    writeJSON(outpath ~ "/themes.json", themes);
 
     tracef("training theme sequences");
     foreach (bible; bibles)

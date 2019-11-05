@@ -88,3 +88,22 @@ unittest
                 "expected " ~ inflections[i] ~ ", got " ~ v.inflect);
     }
 }
+
+
+void nlpMain(string[] args)
+{
+    import std.getopt;
+    import jsonizer;
+
+    string input, output;
+
+    auto opts = getopt(args,
+            config.required,
+            "i|input", "input bible", &input,
+            config.required,
+            "o|output", "output bible", &output);
+    auto nlp = new NLP;
+    auto bible = readJSON!Bible(input);
+    nlp.analyze(bible);
+    writeJSON(output, bible);
+}

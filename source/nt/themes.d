@@ -64,6 +64,7 @@ struct ThemeModel
         {
             // TODO track number of distinct books this thing appears in
             auto t = theme(verse.text);
+            verse.theme = t;
             if (t.length == 0) continue;
             auto stored = StoredVerse(verses.length, verse.analyzed);
             verses ~= stored;
@@ -132,3 +133,27 @@ struct ThemeModel
     mixin JsonizeMe;
 }
 
+
+void findThemesMain(string[] args)
+{
+    import std.getopt;
+
+    string input, outputBible, outputThemes;
+
+    auto opts = getopt(args,
+            config.required,
+            "i|input", "input bible", &input,
+            "b|bible-output", "output annotated bible", &outputBible,
+            "t|theme-output", "output theme index", &outputThemes);
+    ThemeModel themes;
+    auto bible = readJSON!Bible(input);
+    themes.build(bible);
+    if (outputThemes)
+    {
+        writeJSON(outputThemes, themes);
+    }
+    if (outputBible)
+    {
+        writeJSON(outputBible, bible);
+    }
+}

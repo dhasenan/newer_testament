@@ -67,3 +67,22 @@ break down individual verses into tagged documents. I can do this once on input 
 
 This gives me better tools for working with the intermediate forms, instead of using the text and
 manually splitting it and so forth.
+
+### Moving the NLP analysis (and maybe more?) to initial ingestion
+
+This is an efficiency thing. I'd rather not wait six whole minutes every time for the NLP to run
+when I can just run it when I turn the raw text into JSON.
+
+### Figure out name detection
+
+Spacy is kinda crud with name detection. It seems to think "hath" is a proper noun. "Heaven" and
+"God" are more understandable, but then there are things like "night". It identifies a total of 1007
+lowercase words as proper nouns, which is frankly unusable (the Bible's only got like 33k words!).
+
+The question is, does it miss anything? If not, that would be a decent first-pass filter.
+
+### Switch to a newer translation
+
+Spacy doesn't handle words like "shouldst" and "hath", and it's bad with things as simple as "ye".
+The World English Bible is a public domain translation from the late 1990s, so it should use
+language more amenable to Spacy parsing.

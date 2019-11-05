@@ -9,6 +9,7 @@ class Bible
     {
         string name;
         Book[] books;
+        ulong[string] nameHistogram;
     }
 
     this() {}
@@ -23,7 +24,6 @@ class Bible
             .map!(x => x.verses)
             .joiner();
     }
-
 }
 
 class Book
