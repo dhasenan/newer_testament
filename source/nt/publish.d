@@ -1,6 +1,8 @@
 module nt.publish;
 
 import nt.books;
+import nt.util;
+
 import ep = epub;
 import std.process;
 import std.algorithm;
@@ -55,42 +57,35 @@ ep.Chapter toEpubChapter(Book book)
     foreach (i, c; book.chapters)
     {
         a ~= `
-    <h2>`;
+    <h2>
+    `;
         a ~= book.name;
         a ~= `, Chapter `;
         a ~= (i+1).to!string;
         a ~= `</h2>
-        <div class="scripture">`;
+        <div class="scripture">
+        <p>`;
         foreach (j, v; c.verses)
         {
             if (v.text.length == 0) assert(false, "verse had no text");
-            auto p = v.text.split("\u2029");
-            if (p.length == 0)
-                p = [v.text];
-            a ~= format(`
-          <span class="verse"><span class="verseid">%s</span>%s</span>`, j + 1, p[0]);
-            foreach (part; p[1 .. $])
-            {
-                import std.string : strip;
-                if (part.strip.length == 0) continue;
-                a ~= `
-        </div>
-        <div class="scripture">
-          <span class="verse">`;
-                a ~= part;
-                a ~= `</span>`;
-            }
-            if (v.text.endsWith("\u2029"))
-            {
-                a ~= `
-        </div>
-        <div class="scripture">`;
-            }
+            a ~= `
+            <span class="verse"><span class="verseid">%s</span>
+                %s
+            </span>`.format(
+                    v.verse,
+                    v.text.replace(newParagraphMark, `
+            </span>
+        </p>
+        <p>
+            <span class="verse">
+                `)
+                .replace(newLineMark, `<br />`));
         }
         a ~= `
-        </div>`;
+        </p>`;
     }
     a ~= `
+    </div>
   </body>
 </html>`;
     ep.Chapter c = {

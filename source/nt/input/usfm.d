@@ -8,6 +8,7 @@
 module nt.input.usfm;
 
 import nt.books;
+import nt.util;
 
 import std.experimental.logger;
 import std.string;
@@ -154,20 +155,20 @@ whichCommand:
                 case "\\ph":
                 case "\\ph1":
                 case "\\m":
-                    a ~= "\u2029";
+                    a ~= newParagraphMark;
                     break;
                 case "\\b":
-                    a ~= "\u2028";
+                    a ~= newLineMark;
                     break;
                 case "\\q":
                 case "\\q1":
-                    a ~= "\u2028\t";
+                    a ~= newLineMark ~ "\t";
                     break;
                 case "\\q2":
-                    a ~= "\u2028\t\t";
+                    a ~= newLineMark ~ "\t\t";
                     break;
                 case "\\q3":
-                    a ~= "\u2028\t\t\t";
+                    a ~= newLineMark ~ "\t\t\t";
                     break;
                 default:
                     warningf("skipping unknown command %s", command);
@@ -242,12 +243,6 @@ unittest
     auto chap = book.chapters[0];
     assert(chap.verses.length == 7);
     assert(chap.verses[0].text.contains("I was small among my brothers,"
-                ~ "\u2028\t\t and youngest in my father’s house."
-                ~ "\u2028\t\t I tended my father’s sheep."));
-    /*
-    assert(chap.verses[0].text == "I was small among my brothers,"
-            ~ "\u2028\t\tand youngest in my father’s house."
-            ~ "\u2028\t\tI tended my father’s sheep."
-            ~ "\u2029", chap.verses[0].text);
-            */
+                ~ newLineMark ~ "\t\t and youngest in my father’s house."
+                ~ newLineMark ~ "\t\t I tended my father’s sheep."));
 }

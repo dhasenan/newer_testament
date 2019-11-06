@@ -86,3 +86,39 @@ The question is, does it miss anything? If not, that would be a decent first-pas
 Spacy doesn't handle words like "shouldst" and "hath", and it's bad with things as simple as "ye".
 The World English Bible is a public domain translation from the late 1990s, so it should use
 language more amenable to Spacy parsing.
+
+## Interlude: cleanup and tail-chasing
+
+I noticed that the whole process was taking much longer than I liked and wanted to break it down
+into narrower chunks, set up a build system, etc. I actually started writing a build system. I also
+wanted a way to describe a production process from input file to epub in a handy fashion that I
+could check into source control.
+
+However, these are their own projects of decent size. I ended up breaking each discrete operation
+into a separate step that I could run separately and didn't do anything fancy beyond that.
+
+## Interlude: UTF8 errors
+
+Something weird is happening with UTF8 encoding errors. When I pass a string through NLP, the string
+seems to be mutated.
+
+This doesn't happen with suitably short inputs, but with the whole of the WEB Bible, it does occur.
+I'm trying to do more UTF8 validation so I at least get a replacement character, but I'm really not
+sure where it's happening. It might be something about reused / mutable memory, so I'm adding some
+duplication in a couple places defensively.
+
+If this doesn't work out so well, I will switch to a full-Python version of NLP processing, which
+should hopefully not suffer from these problems. That might also be a little faster? More IO, but
+less interop memory copying.
+
+I might also be able to use extensive logging to figure out where things are going wrong...but if
+it's memory corruption, that's going to be an O(n²) operation where we check absolutely everything
+against a clean copy of our input.
+
+Testing...
+
+Yep! Extra copies fixed the issue. Now I'm copying things over when I pass them to Python and again
+when I receive them back from Python.
+
+
+

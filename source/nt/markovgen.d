@@ -24,6 +24,35 @@ import std.string;
 
 enum nameStart = "{", nameEnd = "}", chapterStart = "<<<", chapterEnd = ">>>";
 
+void buildThemeChain(Bible bible, string outputChain, Interval verseContext)
+{
+    auto verses = MarkovChain!string(verseContext.all);
+    foreach (book; bible.books)
+    {
+        foreach (chapter; book.chapters)
+        {
+            auto themeSequence =
+                chapter.verses
+                .map!(x => x.theme)
+                .filter!(x => x.length > 0)
+                .array;
+            verses.train([chapterStart] ~ themeSequence ~ [chapterEnd]);
+        }
+        tracef("trained %s book %s", bible.name, book.name);
+    }
+    verses.encodeBinary(File(outputChain, "w"));
+}
+
+void buildNameChain(Bible bible, string outputChain, Interval nameContext)
+{
+    auto nameChain = MarkovChain!string(nameContext.all);
+    foreach (name, v; bible.nameHistogram)
+    {
+        nameChain.train(name.toLower.split(""));
+    }
+    nameChain.encodeBinary(File(outputChain, "w"));
+}
+
 void bakeBiblesMain(string[] args)
 {
     string model;
@@ -128,6 +157,74 @@ void bakeBiblesMain(string[] args)
         }
     }
     names.encodeBinary(File(outpath ~ "/booknames.chain", "w"));
+}
+
+struct BibleConfig
+{
+    mixin JsonizeMe;
+    @jsonize
+    {
+        string name = "Poorman's Infinite Bible";
+        string input;
+        string dictionaryDatabase = "dict.sqlite3";
+        double chapterCharacterFactor = 3;
+        double bookCharacterFactor = 4;
+        ulong history = 1000;
+        double synonymFactor = 0.2;
+        double antonymFactor = 0.05;
+    }
+    @jsonize("books")
+    {
+        string booksArg() { return books.toString(); }
+        void booksArg(string s) { books = Interval(s); }
+    }
+    @jsonize("chapters")
+    {
+        string chaptersArg() { return chapters.toString(); }
+        void chaptersArg(string s) { chapters = Interval(s); }
+    }
+    @jsonize("verses")
+    {
+        string versesArg() { return verses.toString(); }
+        void versesArg(string s) { verses = Interval(s); }
+    }
+    @jsonize("paragraphLength")
+    {
+        string paragraphLengthArg() { return paragraphLength.toString(); }
+        void paragraphLengthArg(string s) { paragraphLength = Interval(s); }
+    }
+    Interval books = Interval(5, 22);
+    Interval chapters = Interval(3, 50);
+    Interval verses = Interval(12, 90);
+    Interval paragraphLength = Interval(3, 12);
+
+    void clear()
+    {
+        foreach (i, a; this.tupleof)
+        {
+            this.tupleof[i] = typeof(a).init;
+        }
+    }
+
+    void acceptOverlay(const ref BibleConfig other)
+    {
+        foreach (i, a; other.tupleof)
+        {
+            if (a !is typeof(a).init)
+            {
+                this.tupleof[i] = a;
+            }
+        }
+    }
+
+    void adjustPathsRelativeTo(string dir)
+    {
+        import std.path;
+        if (input)
+            input = absolutePath(input, dir);
+        if (dictionaryDatabase)
+            dictionaryDatabase = absolutePath(dictionaryDatabase, dir);
+    }
 }
 
 void generateBibleMain(string[] args)
@@ -271,7 +368,7 @@ void generateBibleMain(string[] args)
                 foreach (lex; v.analyzed)
                 {
                     if (lex.word == chapterEnd) goto nextVerse;
-                    if (lex.word == "\u2029")
+                    if (lex.word == newParagraphMark)
                     {
                         nextPara = i + paragraphCount.uniform(breaker);
                     }
@@ -279,7 +376,7 @@ void generateBibleMain(string[] args)
                 }
                 if (i == nextPara)
                 {
-                    v.analyzed ~= Lex("\u2029", "_SP", "");
+                    v.analyzed ~= Lex(newParagraphMark, "_SP", "");
                 }
                 v.verse = cast(uint)chapter.verses.length + 1;
                 chapter.verses ~= v;

@@ -3,8 +3,43 @@ module nt.util;
 import std.experimental.logger;
 import std.uni;
 
+/// A wrapper around std.getopt to make it less terrible
+void argparse(T...)(string[] args, string description, T opts)
+{
+    import core.stdc.stdlib : exit;
+    import std.getopt;
+    import std.stdio;
+    try
+    {
+        auto gopts = getopt(args,
+                config.bundling,
+                config.caseSensitive,
+                opts);
+        if (gopts.helpWanted)
+        {
+            defaultGetoptPrinter(description, gopts.options);
+            exit(0);
+        }
+    }
+    catch (Exception e)
+    {
+        stderr.writeln(e.message);
+        exit(1);
+    }
+}
+
+/// Separators to use for newline / new paragraph as needed
+// Note: these *must* be in the ASCII range because the NLP layer interacts poorly with multibyte
+// characters
+enum : string { newParagraphMark = "#", newLineMark = "%" }
+
 struct Interval
 {
+    this(ulong min, ulong max)
+    {
+        this.min = min;
+        this.max = max;
+    }
     this(string formatted)
     {
         import std.conv : to;
@@ -33,10 +68,17 @@ struct Interval
         static import std.random;
         return std.random.uniform(min, max + 1);
     }
+
     ulong uniform(TRng)(TRng rng)
     {
         static import std.random;
         return std.random.uniform(min, max + 1, rng);
+    }
+
+    string toString() const
+    {
+        import std.format;
+        return format("%s-%s", min, max);
     }
 }
 

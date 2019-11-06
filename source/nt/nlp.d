@@ -39,12 +39,14 @@ class NLP
     void analyze(Verse verse)
     {
         Lex[] lex;
-        auto doc = nlp(verse.text);
+        auto doc = nlp(verse.text.idup);
         foreach (i; 0 .. doc.length)
         {
             auto t = doc[i];
-            auto ws = t.text_with_ws.to_d!string[t.text.length .. $];
-            lex ~= Lex(t.lemma_.to_d!string, t.tag_.to_d!string, ws);
+            string textWithWhitespace = asString(t.text_with_ws);
+            string text = asString(t.text);
+            auto ws = textWithWhitespace[text.length .. $];
+            lex ~= Lex(asString(t.lemma_), asString(t.tag_), ws);
         }
         verse.analyzed = lex;
     }
@@ -106,4 +108,13 @@ void nlpMain(string[] args)
     auto bible = readJSON!Bible(input);
     nlp.analyze(bible);
     writeJSON(output, bible);
+}
+
+private string asString(PydObject o)
+{
+    import std.utf, std.uni;
+    auto s = o.to_d!string;
+    // this uses the replacement character, which we should probably remove later
+    // but for now, let's at least signal its presence
+    return s.toUTF8; //.replace(replacementDchar, ' ');
 }

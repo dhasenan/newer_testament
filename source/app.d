@@ -3,62 +3,148 @@ import std.stdio;
 import nt.books;
 import nt.markovgen;
 import nt.publish;
+import nt.themes;
+import nt.util;
 import nt.wiktionary;
-import etc.linux.memoryerror;
 
 import arsd.dom;
 import jsonizer;
+
+import etc.linux.memoryerror;
 import std.algorithm;
 import std.array;
 import std.experimental.logger;
+import std.getopt;
+import std.path;
+import std.file;
+import std.string;
 
 void main(string[] args)
 {
     registerMemoryErrorHandler();
     globalLogLevel = LogLevel.trace;
     if (args.length == 1) return;
-    switch (args[1])
+    auto rest = args[1 .. $];
+    doMain(args[0], rest);
+}
+
+void doMain(string exeName, string[] rest)
+{
+    switch (rest[0])
     {
-        case "kjv":
+        case "prepare-input":
+            string type, input, outdir;
+            argparse(rest, "Fully prepare input from base sources.\n"
+                    ~ "This does everything to the input that can be done without "
+                    ~ "tuning parameters.",
+                    config.required,
+                    "t|type", "the type of bible that the input is", &type,
+                    config.required,
+                    "i|input", "the input bible file", &input,
+                    config.required,
+                    "o|outdir", "the output directory", &outdir);
+            mkdirRecurse(outdir);
+            auto rawBible = buildPath(outdir, "bible.json");
+            auto nlpBible = buildPath(outdir, "bible-nlp.json");
+            auto nameBible = buildPath(outdir, "bible-name.json");
+            doMain(exeName, ["import", "-t", type, "-i", input, "-o", rawBible]);
+            doMain(exeName, ["nlp", "-i", rawBible, "-o", nlpBible]);
+            doMain(exeName, ["find-names", "-i", nlpBible, "-o", nameBible]);
+
+            writefln("Done! To build the model:");
+            writefln("  %s prepare-model -i %s -o mymodel [args]", exeName, nameBible);
+            writefln("For more info on the possible arguments:");
+            writefln("  %s prepare-model --help");
+            return;
+
+        case "prepare-model":
+            string input, outdir, nameContext = "1-3", themeContext = "2-3", themeFreq = "20-1000";
+            argparse(rest, "Prepare the model from a prepared input",
+                    config.required,
+                    "i|input", "input bible", &input,
+                    config.required,
+                    "o|outdir", "directory to store the output", &outdir,
+                    "n|name-context", "range of characters for name context", &nameContext,
+                    "t|theme-context", "range of verses for theme context", &themeContext,
+                    "f|theme-frequency",
+                        "how frequent a word can be to be considered as a theme candidate",
+                        &themeContext,
+                    );
+            auto bible = readJSON!Bible(input);
+
+            // Themes!
+            ThemeModel themes;
+            auto tf = Interval(themeFreq);
+            themes.minOccurrences = tf.min;
+            themes.maxOccurrences = tf.max;
+            themes.build(bible);
+            writeJSON(buildPath(outdir, "themes.json"), themes);
+            writeJSON(buildPath(outdir, "bible-themes.json"), bible);
+
+            // Chains!
+            buildThemeChain(bible, buildPath(outdir, "themes.chain"), Interval(themeContext));
+            buildNameChain(bible, buildPath(outdir, "names.chain"), Interval(nameContext));
+            writefln("Done! To build the ebook:");
+            writefln("  %s create-bible -m %s [args]", exeName, outdir);
+            writefln("For more info on the possible arguments:");
+            writefln("  %s create-bible --help");
+            return;
+
+        case "import":
             import nt.input.kjv;
-            writeJSON("kjv.json", importKJV(args[2]));
-            return;
-        case "bom":
             import nt.input.bom;
-            writeJSON("bom.json", importBoM(args[2]));
-            return;
-        case "web":
             import nt.input.web;
-            writeJSON("web.json", importWEB(args[2]));
+            string input, output, type;
+            argparse(rest, "Import a bible from original sources",
+                    config.required,
+                    "t|type", &type,
+                    config.required,
+                    "i|input", &input,
+                    config.required,
+                    "o|output", &output);
+            Bible bible;
+            type = type.toLower;
+            if (type == "kjv")
+                bible = importKJV(input);
+            else if (type == "bom")
+                bible = importBoM(input);
+            else if (type == "web")
+                bible = importWEB(input);
+            else
+            {
+                stderr.writefln("unrecognized bible type '%s'", type);
+                import core.stdc.stdlib : exit;
+                exit(1);
+            }
+            writeJSON(output, bible);
             return;
         case "nlp":
             import nt.nlp;
-            nlpMain(args[1..$]);
+            nlpMain(rest);
             return;
         case "find-names":
             import nt.names;
-            findNamesMain(args[1..$]);
+            findNamesMain(rest);
             return;
         case "find-themes":
             import nt.themes;
-            findThemesMain(args[1..$]);
+            findThemesMain(rest);
             return;
         case "build-chains":
-            bakeBiblesMain(args[1..$]);
+            bakeBiblesMain(rest);
             return;
         case "generate-bible":
-            generateBibleMain(args[1..$]);
+            generateBibleMain(rest);
             return;
         case "build-epub":
-            auto bible = readJSON!Bible(args[2]);
+            auto bible = readJSON!Bible(rest[1]);
             writeEpub(bible, bible.name ~ ".epub");
             return;
         case "merge-bibles":
             import std.getopt;
-            auto a = args[1..$];
             string[] inputs;
             string output;
-            auto opts = getopt(args,
+            auto opts = getopt(rest,
                     config.required,
                     "i|inputs", "input bibles to merge", &inputs,
                     config.required,
@@ -66,15 +152,26 @@ void main(string[] args)
             auto bibles = inputs.map!(x => readJSON!Bible(x));
             foreach (bible; bibles[1..$])
             {
-                //bibles[0].append(bible);
+                bibles[0].books ~= bible.books;
+                foreach (k, v; bible.nameHistogram)
+                {
+                    if (auto p = k in bibles[0].nameHistogram)
+                    {
+                        (*p) += v;
+                    }
+                    else
+                    {
+                        bibles[0].nameHistogram[k] = v;
+                    }
+                }
             }
             writeJSON(output, bibles[0]);
             return;
         case "build-dict":
-            importMain(args[1..$]);
+            importMain(rest);
             return;
         default:
-            writefln("unrecognized option %s", args[1]);
+            writefln("unrecognized option %s", rest[0]);
             return;
     }
 }

@@ -4,6 +4,7 @@ module nt.input.kjv;
 import nt.books;
 import nt.names;
 import nt.nlp;
+import nt.util;
 
 import std.conv;
 import std.json;
@@ -56,7 +57,7 @@ Bible toKJVBible(string text)
             splat.popFront;
             auto cleaned = splat.front
                 // Paragraph separator isn't whitespace and won't get stripped
-                .replace("\n\n", "\u2029")
+                .replace("\n\n", newParagraphMark)
                 .strip
                 .replace("\n", " ");
             auto verse = new Verse(v, cleaned);
