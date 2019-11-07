@@ -122,6 +122,10 @@ void doMain(string exeName, string[] rest)
             import nt.nlp;
             nlpMain(rest);
             return;
+        case "nlp-render":
+            import nt.nlp;
+            nlpRenderMain(rest);
+            return;
         case "find-names":
             import nt.names;
             findNamesMain(rest);

@@ -91,6 +91,7 @@ void bakeBiblesMain(string[] args)
 
     string verseThemeArg = "1-3";
     string nameArg = "1-3";
+    auto originalArgs = args;
     auto opts = getopt(args,
             std.getopt.config.required,
             "m|model", "model name to build", &model,
@@ -117,12 +118,11 @@ void bakeBiblesMain(string[] args)
     mkdirRecurse(outpath);
     auto inputPath = outpath ~ "/inputs";
     mkdirRecurse(inputPath);
+    import std.path;
+    std.file.write(buildPath(outpath, "args"), originalArgs.join("\n"));
 
     auto verses = MarkovChain!string(Interval(verseThemeArg).all);
     auto nameChain = MarkovChain!string(Interval(nameArg).all);
-    ThemeModel themes;
-    themes.minOccurrences = minThreshold;
-    themes.maxOccurrences = maxThreshold;
     Bible[] bibles;
 
     ulong[string] nameHistogram;
@@ -166,12 +166,12 @@ void bakeBiblesMain(string[] args)
             {
                 auto themeSequence =
                     chapter.verses
-                        .map!(x => themes.theme(x.text))
+                        .map!(x => x.theme)
                         .filter!(x => x.length > 0)
                         .array;
                 verses.train([nameStart] ~ themeSequence ~ [nameEnd]);
             }
-            tracef("trained %s book %s", bible.name, book.name);
+            //tracef("trained %s book %s", bible.name, book.name);
         }
     }
     verses.encodeBinary(File(outpath ~ "/verses.chain", "w"));
@@ -374,26 +374,26 @@ void generateBibleMain(string[] args)
             verses.seed(nameStart);
             Chapter chapter = new Chapter;
             chapter.chapter = cast(uint)(chapternum + 1);
-            auto vv = verses.generate(verseCount.uniform)
-                .map!(x => themes.toVerse(x))
-                // Remove empty stuff
-                .filter!(x => x !is null)
-                .filter!(x => x.analyzed.length > 0)
-                .array;
             uint kept = 0;
             ulong nextPara = paragraphCount.uniform(breaker);
-            foreach (i, v; vv)
+            foreach (theme; verses.generate(verseCount.uniform))
             {
+                if (theme.length == 0) continue;
+                if (theme == nameEnd) break;
+                auto v = themes.toVerse(theme);
+                if (v is null) continue;
+                if (v.analyzed.length == 0) continue;
+                kept++;
                 foreach (lex; v.analyzed)
                 {
                     if (lex.word == nameEnd) break;
                     if (lex.word == newParagraphMark)
                     {
-                        nextPara = i + paragraphCount.uniform(breaker);
+                        nextPara = kept + paragraphCount.uniform(breaker);
                     }
 
                 }
-                if (i == nextPara)
+                if (kept == nextPara)
                 {
                     v.analyzed ~= Lex(newParagraphMark, "_SP", "");
                 }
@@ -401,14 +401,6 @@ void generateBibleMain(string[] args)
                 chapter.verses ~= v;
             }
             book.chapters ~= chapter;
-            /*
-            if (Clock.currTime > limit)
-            {
-                trace("exceeded time limit; aborting early");
-                bible.books ~= book;
-                goto save;
-            }
-            */
             tracef("built book %s/%s chapter %s/%s", booknum + 1, numBooks, chapternum + 1,
                     numChapters);
         }
@@ -426,12 +418,17 @@ save:
         db.cleanup;
     }
 
+    import std.path : buildPath;
+    writeJSON(buildPath(modelPath, "gen-nlp-only-%s.json".format(seed)), bible);
+
+    import nt.nlp;
+    new NLP().render(bible);
+
     if (outfile == "")
     {
         outfile = name ~ ".json";
     }
     tracef("saving bible json to %s", outfile);
-    writeJSON(outfile, bible);
 
     import nt.publish;
     if (epubFile == "")

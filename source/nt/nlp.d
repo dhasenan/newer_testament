@@ -18,9 +18,12 @@ class NLP
         PydObject load = spacy.load;
         this.nlp = load("en_core_web_sm");
         this.getInflection = py_import("pyinflect").getInflection;
+        PydObject builtins = py_import("builtins");
+        this.strType = builtins.str;
+        this.tupleType = builtins.tuple;
     }
 
-    private PydObject nlp, getInflection;
+    private PydObject nlp, getInflection, strType, tupleType;
 
     void analyze(Bible bible)
     {
@@ -56,6 +59,20 @@ class NLP
         verse.analyzed = lex;
     }
 
+    void render(Bible bible)
+    {
+        import std.experimental.logger;
+        import std.range;
+        foreach (i, verse; bible.allVerses.enumerate)
+        {
+            render(verse);
+            if (i > 0 && i % 1000 == 0)
+            {
+                tracef("rendered %s verses", i);
+            }
+        }
+    }
+
     void render(Verse verse)
     {
         import std.array : Appender;
@@ -69,10 +86,27 @@ class NLP
             }
             else
             {
-                a ~= s.to_d!string;
+                a ~= asString(s);
             }
+            a ~= lex.whitespace;
         }
         verse.text = a.data;
+    }
+
+    private string asString(PydObject o)
+    {
+        import std.utf, std.uni;
+        import std.experimental.logger;
+        tracef("asString called on %s", o.type.__name__.to_d!string);
+        if (o.isinstance(tupleType))
+        {
+            // hopefully it's a tuple containing only one string?
+            o = o[0];
+        }
+        auto s = o.to_d!string;
+        // this uses the replacement character, which we should probably remove later
+        // but for now, let's at least signal its presence
+        return s.toUTF8; //.replace(replacementDchar, ' ');
     }
 }
 
@@ -100,11 +134,13 @@ unittest
 void nlpMain(string[] args)
 {
     import std.getopt;
+    import nt.util;
     import jsonizer;
 
     string input, output;
 
-    auto opts = getopt(args,
+    argparse(args,
+            "Produce NLP analysis annotations for a bible",
             config.required,
             "i|input", "input bible", &input,
             config.required,
@@ -115,11 +151,22 @@ void nlpMain(string[] args)
     writeJSON(output, bible);
 }
 
-private string asString(PydObject o)
+void nlpRenderMain(string[] args)
 {
-    import std.utf, std.uni;
-    auto s = o.to_d!string;
-    // this uses the replacement character, which we should probably remove later
-    // but for now, let's at least signal its presence
-    return s.toUTF8; //.replace(replacementDchar, ' ');
+    import std.getopt;
+    import nt.util;
+    import jsonizer;
+
+    string input, output;
+
+    argparse(args,
+            "Render NLP analysis of a Bible",
+            config.required,
+            "i|input", "input bible", &input,
+            config.required,
+            "o|output", "output bible", &output);
+    auto nlp = new NLP;
+    auto bible = readJSON!Bible(input);
+    nlp.render(bible);
+    writeJSON(output, bible);
 }
