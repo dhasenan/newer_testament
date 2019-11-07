@@ -31,7 +31,7 @@ void argparse(T...)(string[] args, string description, T opts)
 /// Separators to use for newline / new paragraph as needed
 // Note: these *must* be in the ASCII range because the NLP layer interacts poorly with multibyte
 // characters
-enum : string { newParagraphMark = "#", newLineMark = "%" }
+enum : string { newParagraphMark = "\u2029", newLineMark = "\u2028" }
 
 struct Interval
 {
@@ -79,6 +79,11 @@ struct Interval
     {
         import std.format;
         return format("%s-%s", min, max);
+    }
+
+    bool opIn_r(ulong v)
+    {
+        return v <= max && v >= min;
     }
 }
 

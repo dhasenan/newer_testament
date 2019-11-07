@@ -3,6 +3,7 @@ module nt.names;
 
 import nt.books;
 import nt.util : toWords, titleCase;
+import nt.dictionary;
 
 import std.uni;
 import std.array;
@@ -10,6 +11,7 @@ import std.algorithm;
 import std.conv;
 import std.random;
 import std.regex;
+import std.experimental.logger;
 
 alias Set(T) = ulong[T];
 
@@ -26,32 +28,80 @@ void increment(T)(ref ulong[T] s, T key)
 }
 
 /** Get a histogram of names and name-like things. */
-void findNames(Bible bible)
+void findNames(Bible bible, string[] knownNonNames, DB dictionary)
 {
-    ulong[string] names;
+    // All names in lowercase variant
+    ulong[string] nonNames;
+    ulong[string] maybeNames;
+    ulong found = 0;
+
+    foreach (n; knownNonNames) nonNames[n] = 1;
+
+    foreach (verse; bible.allVerses)
+    {
+        foreach (lex; verse.analyzed)
+        {
+            if (lex.inflect != "NNP" && lex.inflect != "NNPS")
+            {
+                nonNames[lex.word] = 1;
+                continue;
+            }
+            auto lower = lex.word.toLower;
+            if (lower in nonNames)
+            {
+                continue;
+            }
+            if (lex.word == lower)
+            {
+                increment(nonNames, lower);
+                continue;
+            }
+            if (!dictionary.get(lower).isNull)
+            {
+                increment(nonNames, lower);
+                continue;
+            }
+            found++;
+            if (found % 100 == 0)
+            {
+                tracef("found %s name usages, %s names total", found, maybeNames.length);
+            }
+            increment(maybeNames, lower);
+        }
+    }
+
+    bible.nameHistogram = maybeNames;
+
+    // *Now* we can build the dramatisPersonae sections (do we actually use them?)
     foreach (book; bible.books)
     {
-        ulong[string] bookPeople;
+        tracef("building dramatis personae for book %s", book.name);
         foreach (chapter; book.chapters)
         {
-            ulong[string] chapterPeople;
             foreach (verse; chapter.verses)
             {
                 foreach (lex; verse.analyzed)
                 {
-                    if (lex.inflect == "NNP")
+                    if (lex.inflect == "NNP" || lex.inflect == "NNPS")
                     {
-                        increment(names, lex.word);
-                        increment(bookPeople, lex.word);
-                        increment(chapterPeople, lex.word);
+                        chapter.dramatisPersonae ~= lex.word;
                     }
                 }
             }
-            chapter.dramatisPersonae = chapterPeople.keys;
+            chapter.dramatisPersonae = chapter.dramatisPersonae
+                .sort
+                .uniq
+                .array;
         }
-        book.dramatisPersonae = bookPeople.keys;
+        book.dramatisPersonae = book.chapters
+            .map!(x => x.dramatisPersonae)
+            .joiner()
+            .array
+            .sort
+            .uniq
+            .array;
     }
-    bible.nameHistogram = names;
+    tracef("finished with %s names", bible.nameHistogram.length);
 }
 
 void convertNames(Bible bible)
@@ -171,21 +221,40 @@ void findNamesMain(string[] args)
     import jsonizer;
 
     string input;
-    string output, histogramFile;
+    string output;
+    string dictionaryFile;
+    string stopwordFile;
     auto opts = getopt(args,
             config.required,
             "i|input", "input bible", &input,
             config.required,
             "o|output", "output directory", &output,
-            "n|names", "name histogram output", &histogramFile);
+            config.required,
+            "d|dictionary", "path to dictionary database", &dictionaryFile,
+            "s|stopwords", "path to stopwords (known non-names) file", &stopwordFile);
     if (opts.helpWanted)
     {
         defaultGetoptPrinter("find names in the Bible", opts.options);
         return;
     }
 
+    string[] knownNonNames;
+    if (stopwordFile)
+    {
+        foreach (line; File(stopwordFile).byLineCopy)
+        {
+            import std.string : strip;
+            auto s = line.strip;
+            if (s.length && !s.startsWith("#"))
+            {
+                knownNonNames ~= s;
+            }
+        }
+    }
     auto bible = readJSON!Bible(input);
-    findNames(bible);
+    auto db = new DB(dictionaryFile);
+    scope (exit) db.cleanup;
+    findNames(bible, knownNonNames, db);
     convertNames(bible);
     writeJSON(output, bible);
 }

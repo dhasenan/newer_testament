@@ -44,6 +44,14 @@ Bible importWEB(string filename)
         z.expand(member);
         bible.books ~= usfmToBook(cast(string)member.expandedData);
     }
+    foreach (verse; bible.allVerses)
+    {
+        verse.text = verse.text
+            .replace("—", " — ")
+            .replace("eThen", "Then")
+            .replace("ofAdin", "of Adin")
+            ;
+    }
     return bible;
 }
 

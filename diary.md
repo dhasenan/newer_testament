@@ -81,6 +81,24 @@ lowercase words as proper nouns, which is frankly unusable (the Bible's only got
 
 The question is, does it miss anything? If not, that would be a decent first-pass filter.
 
+After a bit of checking, it turns out that newline/paragraph substitution characters are giving it
+some issues. I was using # and % as substitution characters, but it then thinks that something like
+`him;%` is a single token and calls it a proper noun.
+
+It also has `-PRON-` and I'm not sure how to resolve that. For instance, the result of analyzing
+`his` has no indication that it's a third person singular pronoun.
+
+Aside from those issues, there are a lot of things they've got that really shouldn't be there, like:
+
+* Anguish
+* Anoint
+* Apostle
+* Bless
+* Counselor
+* Command
+
+I spent some time on this before moving on to other distractions.
+
 ### Switch to a newer translation
 
 Spacy doesn't handle words like "shouldst" and "hath", and it's bad with things as simple as "ye".
@@ -121,4 +139,16 @@ Yep! Extra copies fixed the issue. Now I'm copying things over when I pass them 
 when I receive them back from Python.
 
 
+## Name detection and input cleanup
+
+The NLP step somewhat filters the input for proper names. It's kind of bad at it. Filtering out the
+names that we observe in lowercase helps, but it's terribly slow. Instead, we're looking at the
+dictionary we imported from Wiktionary and MyThes and using that to filter out names, then adding a
+manual list of non-names finishes us up.
+
+The WEB input has a few issues / awkwardnesses for the NLP step:
+
+* typo "eThen" in Ezekiel 2:15
+* typo "ofAdin" in 1 Esdras 8:32
+* `\fr` tags that don't have proper spacing around them (2 Maccabees 14:31)
 

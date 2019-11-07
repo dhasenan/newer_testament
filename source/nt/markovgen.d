@@ -7,6 +7,7 @@ import nt.nlp;
 import nt.themes;
 import nt.util;
 import nt.wiktionary;
+import nt.dictionary;
 
 import jsonizer;
 import markov;
@@ -22,7 +23,7 @@ import std.range;
 import std.stdio;
 import std.string;
 
-enum nameStart = "{", nameEnd = "}", chapterStart = "<<<", chapterEnd = ">>>";
+enum nameStart = "{", nameEnd = "}";
 
 void buildThemeChain(Bible bible, string outputChain, Interval verseContext)
 {
@@ -36,7 +37,7 @@ void buildThemeChain(Bible bible, string outputChain, Interval verseContext)
                 .map!(x => x.theme)
                 .filter!(x => x.length > 0)
                 .array;
-            verses.train([chapterStart] ~ themeSequence ~ [chapterEnd]);
+            verses.train([nameStart] ~ themeSequence ~ [nameEnd]);
         }
         tracef("trained %s book %s", bible.name, book.name);
     }
@@ -48,9 +49,37 @@ void buildNameChain(Bible bible, string outputChain, Interval nameContext)
     auto nameChain = MarkovChain!string(nameContext.all);
     foreach (name, v; bible.nameHistogram)
     {
-        nameChain.train(name.toLower.split(""));
+        nameChain.train([nameStart] ~ name.toLower.split("") ~ [nameEnd]);
     }
     nameChain.encodeBinary(File(outputChain, "w"));
+}
+
+string genName(ref MarkovChain!string chain, Interval length)
+{
+    import std.array;
+    enum maxAttempts = 10;
+    Appender!string a;
+    foreach (i; 0 .. maxAttempts)
+    {
+        a = typeof(a).init;
+        chain.reset;
+        chain.seed(nameStart);
+        foreach (j; 0 .. length.max)
+        {
+            auto c = chain.generate;
+            if (c == nameEnd)
+            {
+                auto d = a.data;
+                if (d.length in length)
+                {
+                    return d;
+                }
+                break;
+            }
+            a ~= c;
+        }
+    }
+    return a.data;
 }
 
 void bakeBiblesMain(string[] args)
@@ -140,7 +169,7 @@ void bakeBiblesMain(string[] args)
                         .map!(x => themes.theme(x.text))
                         .filter!(x => x.length > 0)
                         .array;
-                verses.train([chapterStart] ~ themeSequence ~ [chapterEnd]);
+                verses.train([nameStart] ~ themeSequence ~ [nameEnd]);
             }
             tracef("trained %s book %s", bible.name, book.name);
         }
@@ -331,17 +360,7 @@ void generateBibleMain(string[] args)
 
         foreach (attempt; 0 .. 10)
         {
-            bookNames.reset;
-            bookNames.seed(nameStart);
-            Appender!string namegen;
-            foreach (i; 0 .. 25)
-            {
-                auto c = bookNames.generate;
-                if (c == nameEnd) break;
-                if (c == nameStart) continue;
-                namegen ~= c;
-            }
-            book.name = namegen.data;
+            book.name = genName(bookNames, Interval(4, 20));
             if (book.name in usedBookNames) continue;
             usedBookNames[book.name] = true;
             break;
@@ -352,7 +371,7 @@ void generateBibleMain(string[] args)
         {
             import std.string : strip;
             verses.reset;
-            verses.seed(chapterStart);
+            verses.seed(nameStart);
             Chapter chapter = new Chapter;
             chapter.chapter = cast(uint)(chapternum + 1);
             auto vv = verses.generate(verseCount.uniform)
@@ -367,7 +386,7 @@ void generateBibleMain(string[] args)
             {
                 foreach (lex; v.analyzed)
                 {
-                    if (lex.word == chapterEnd) goto nextVerse;
+                    if (lex.word == nameEnd) break;
                     if (lex.word == newParagraphMark)
                     {
                         nextPara = i + paragraphCount.uniform(breaker);
@@ -380,7 +399,6 @@ void generateBibleMain(string[] args)
                 }
                 v.verse = cast(uint)chapter.verses.length + 1;
                 chapter.verses ~= v;
-nextVerse:
             }
             book.chapters ~= chapter;
             /*

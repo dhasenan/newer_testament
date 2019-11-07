@@ -43,10 +43,15 @@ class NLP
         foreach (i; 0 .. doc.length)
         {
             auto t = doc[i];
-            string textWithWhitespace = asString(t.text_with_ws);
-            string text = asString(t.text);
-            auto ws = textWithWhitespace[text.length .. $];
-            lex ~= Lex(asString(t.lemma_), asString(t.tag_), ws);
+            auto ws = asString(t.whitespace_);
+            auto lemma = asString(t.lemma_);
+            auto tag = asString(t.tag_);
+            if (lemma == "-PRON-")
+            {
+                lemma = asString(t.text);
+                tag = "-PRON-";
+            }
+            lex ~= Lex(lemma, asString(t.tag_), ws);
         }
         verse.analyzed = lex;
     }
