@@ -29,20 +29,20 @@ Bible importWEB(string filename)
     auto z = new ZipArchive(read(filename));
     auto bible = new Bible();
     bible.name = "World English Bible";
-    foreach (name, member; z.directory)
+    auto books = z.directory
+        .keys
+        .filter!(x => x.endsWith(".usfm"))
+        .filter!(x => !x.contains("00-FRTeng-web.usfm"))
+        .filter!(x => !x.contains("106-GLOeng-web.usfm"))
+        .array
+        .sort
+        .array;
+    foreach (i, bookName; books)
     {
-        if (!name.endsWith(".usfm"))
-        {
-            continue;
-        }
-        if (name.endsWith("00-FRTeng-web.usfm")
-                || name.endsWith("106-GLOeng-web.usfm"))
-        {
-            // Not an actual bible book.
-            continue;
-        }
+        auto member = z.directory[bookName];
         z.expand(member);
-        bible.books ~= usfmToBook(cast(string)member.expandedData);
+        auto book = usfmToBook(cast(string)member.expandedData);
+        bible.books ~= book;
     }
     foreach (verse; bible.allVerses)
     {

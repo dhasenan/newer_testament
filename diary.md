@@ -152,3 +152,35 @@ The WEB input has a few issues / awkwardnesses for the NLP step:
 * typo "ofAdin" in 1 Esdras 8:32
 * `\fr` tags that don't have proper spacing around them (2 Maccabees 14:31)
 
+## Remaining fixups to get something vaguely usable
+
+* Sentence casing
+* Contractions
+* Verbs inflecting for person (eg "be")
+* Name reuse
+* Overly short chapters
+* Some archaic terms, eg 'hast'
+
+### Sentence casing
+
+Sentence casing is inconsistent because we take whole verses instead of sentences. We can address
+this by going sentence by sentence instead of by verse, or by taking a verse with all overlapping
+sentences. Maybe. Or we can address it by fixing up casing as a second step.
+
+### Contractions
+
+> Don’t seal up the words of the prophecy of this book, for the time is at hand.
+
+This, after analysis and rendering, turns into:
+
+> Donot seal up the words of the prophecy of this book, for the time is at hand.
+
+We can resolve that, potentially, by tracking whether the previous token in this verse had
+whitespace. No previous token or it had whitespace means this token should be "not"; otherwise,
+"n't".
+
+### Inflecting for person
+
+The tags for a parsed word only indicate mood / tense, not person. More specifically, each
+supported inflection category of a word has multiple forms. I should persist that to avoid issues
+like "You open your hand; they am satisfied with good."

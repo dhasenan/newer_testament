@@ -140,6 +140,36 @@ void doMain(string exeName, string[] rest)
         case "generate-bible":
             generateBibleMain(rest);
             return;
+        case "swap-names":
+            import nt.names;
+            import std.random;
+            import markov;
+            import std.range;
+            import std.algorithm;
+            import std.string;
+            string input, output, chainFile;
+            uint seed = unpredictableSeed;
+            argparse(rest, "Swap names in NLP bible",
+                    config.required,
+                    "i|input", "input bible", &input,
+                    config.required,
+                    "o|output", "output bible", &output,
+                    config.required,
+                    "c|chain", "name markov chain", &chainFile,
+                    "s|seed", "random number seed", &seed);
+            rndGen.seed(seed);
+            auto chain = decodeBinary!string(File(chainFile, "r"));
+            auto bible = readJSON!Bible(input);
+            auto names = iota(500)
+                .map!(x => chain.generate(uniform(4, 10)).join(""))
+                .array
+                .sort
+                .uniq
+                .array;
+            tracef("got %s names from chain", names.length);
+            swapNames(bible, names, 3, 4);
+            writeJSON(output, bible);
+            return;
         case "build-epub":
             auto bible = readJSON!Bible(rest[1]);
             writeEpub(bible, bible.name ~ ".epub");

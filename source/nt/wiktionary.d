@@ -79,10 +79,16 @@ void replaceSynonyms(DB db, Bible bible, double replacementRatio = 0.2)
 
     foreach (verse; bible.allVerses)
     {
-        foreach (w; verse.text.toWords)
+        foreach (lex; verse.analyzed)
         {
-            auto key = w.toLower;
-            if (key in stop || key in replacements) continue;
+            auto key = lex.word;
+            if (key in stop) continue;
+            if (auto p = key in replacements)
+            {
+                lex.word = *p;
+                lex.variant = 0;
+                continue;
+            }
             import std.random : uniform;
             if (uniform(0.0, 1.0) >= replacementRatio)
             {
@@ -107,10 +113,12 @@ void replaceSynonyms(DB db, Bible bible, double replacementRatio = 0.2)
             if (newReplacement == key)
             {
                 tracef("self-replacement for %s", newReplacement);
+                stop[key] = true;
+                continue;
             }
             replacements[key] = newReplacement;
+            lex.word = newReplacement;
         }
-        verse.text = replace(verse.text, replacements);
     }
 }
 

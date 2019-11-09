@@ -37,45 +37,9 @@ void findNames(Bible bible, string[] knownNonNames, DB dictionary)
 
     foreach (n; knownNonNames) nonNames[n] = 1;
 
-    foreach (verse; bible.allVerses)
-    {
-        foreach (lex; verse.analyzed)
-        {
-            if (lex.inflect != "NNP" && lex.inflect != "NNPS")
-            {
-                nonNames[lex.word] = 1;
-                continue;
-            }
-            auto lower = lex.word.toLower;
-            if (lower in nonNames)
-            {
-                continue;
-            }
-            if (lex.word == lower)
-            {
-                increment(nonNames, lower);
-                continue;
-            }
-            if (!dictionary.get(lower).isNull)
-            {
-                increment(nonNames, lower);
-                continue;
-            }
-            found++;
-            if (found % 100 == 0)
-            {
-                tracef("found %s name usages, %s names total", found, maybeNames.length);
-            }
-            increment(maybeNames, lower);
-        }
-    }
-
-    bible.nameHistogram = maybeNames;
-
-    // *Now* we can build the dramatisPersonae sections (do we actually use them?)
+    // Identify names, adding to dramatis personae sections as we go
     foreach (book; bible.books)
     {
-        tracef("building dramatis personae for book %s", book.name);
         foreach (chapter; book.chapters)
         {
             foreach (verse; chapter.verses)
@@ -84,65 +48,63 @@ void findNames(Bible bible, string[] knownNonNames, DB dictionary)
                 {
                     if (lex.inflect == "NNP" || lex.inflect == "NNPS")
                     {
-                        chapter.dramatisPersonae ~= lex.word;
+                        auto key = lex.word.toLower;
+                        if (key in nonNames)
+                        {
+                            lex.inflect = "NN";
+                            continue;
+                        }
+                        if (!dictionary.get(key).isNull)
+                        {
+                            nonNames[key] = 1;
+                            lex.inflect = "NN";
+                            continue;
+                        }
+                        increment(bible.nameHistogram, key);
+                        // This is O(n²), which isn't awesome, but we're only going to deal with a
+                        // couple thousand entries in the absolute worst case.
+                        lex.person = chapter.dramatisPersonae.countUntil(key);
+                        if (lex.person < 0)
+                        {
+                            lex.person = chapter.dramatisPersonae.length;
+                            chapter.dramatisPersonae ~= key;
+                            if (!book.dramatisPersonae.canFind(key))
+                            {
+                                book.dramatisPersonae ~= key;
+                            }
+                        }
                     }
                 }
             }
-            chapter.dramatisPersonae = chapter.dramatisPersonae
-                .sort
-                .uniq
-                .array;
         }
-        book.dramatisPersonae = book.chapters
-            .map!(x => x.dramatisPersonae)
-            .joiner()
-            .array
-            .sort
-            .uniq
-            .array;
-    }
-    tracef("finished with %s names", bible.nameHistogram.length);
-}
-
-void convertNames(Bible bible)
-{
-    // Figure out what names we have in each book and chapter
-    foreach (book; bible.books)
-    {
-        ulong[string] bookNames;
-        foreach (chapter; book.chapters)
-        {
-            ulong[string] chapterNames;
-            foreach (verse; chapter.verses)
-            {
-                foreach (lex; verse.analyzed)
-                {
-                    if (lex.word in bible.nameHistogram)
-                    {
-                        bookNames.increment(lex.word);
-                        chapterNames.increment(lex.word);
-                    }
-                }
-            }
-            chapter.dramatisPersonae = chapterNames.keys.array.sort.array;
-        }
-        book.dramatisPersonae = bookNames.keys.array.sort.array;
+        tracef("book %s has %s people mentioned", book.name, book.dramatisPersonae.length);
     }
 
     // Now alter the verses
     foreach (book; bible.books)
     foreach (chapter; book.chapters)
     foreach (verse; chapter.verses)
-    foreach (i, name; chapter.dramatisPersonae)
+    foreach (ref Lex lex; verse.analyzed)
     {
-        foreach (ref Lex lex; verse.analyzed)
+        if (lex.inflect == "NNP")
         {
-            if (lex.inflect == "NNP" && lex.word == name)
+            import std.algorithm.searching : countUntil;
+            lex.person = chapter.dramatisPersonae.countUntil(lex.word.toLower);
+            if (lex.person == -1)
             {
-                lex.person = i;
+                errorf(
+                        "failed to find proper noun %s in dramatis personae for %s %s",
+                        lex.word,
+                        book.name,
+                        chapter.chapter);
             }
         }
+        else
+        {
+            lex.person = -1;
+        }
     }
+    tracef("finished with %s names", bible.nameHistogram.length);
 }
 
 /**
@@ -166,9 +128,12 @@ void swapNames(Bible bible, string[] names, double chapterFactor, double bookFac
             {
                 // Figure out how many people we need in this verse.
                 Set!ulong peeps;
-                foreach (m; verse.text.matchAll(index))
+                foreach (lex; verse.analyzed)
                 {
-                    peeps[m[1].to!ulong] = true;
+                    if (lex.person >= 0)
+                    {
+                        increment(peeps, lex.person);
+                    }
                 }
                 if (chapterRequiredPeeps < peeps.length)
                     chapterRequiredPeeps = peeps.length;
@@ -200,11 +165,12 @@ void swapNames(Bible bible, string[] names, double chapterFactor, double bookFac
             {
                 foreach (ref lex; verse.analyzed)
                 {
-                    if (lex.inflect != "NNP") continue;
+                    if (lex.person <= 0) continue;
                     auto id = lex.person;
                     if (!(id in peepIds))
                     {
                         peepIds[id] = peepIds.length % chapter.dramatisPersonae.length;
+                        tracef("mapped person %s to %s", id, peepIds[id]);
                     }
                     lex.person = peepIds[id];
                     lex.word = chapter.dramatisPersonae[lex.person];
@@ -255,6 +221,5 @@ void findNamesMain(string[] args)
     auto db = new DB(dictionaryFile);
     scope (exit) db.cleanup;
     findNames(bible, knownNonNames, db);
-    convertNames(bible);
     writeJSON(output, bible);
 }

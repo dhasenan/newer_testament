@@ -16,7 +16,7 @@ class NLP
     {
         PydObject spacy = py_import("spacy");
         PydObject load = spacy.load;
-        this.nlp = load("en_core_web_sm");
+        this.nlp = load("en_core_web_lg");
         this.getInflection = py_import("pyinflect").getInflection;
         PydObject builtins = py_import("builtins");
         this.strType = builtins.str;
@@ -41,22 +41,51 @@ class NLP
 
     void analyze(Verse verse)
     {
-        Lex[] lex;
+        Lex[] analyzed;
         auto doc = nlp(verse.text.idup);
         foreach (i; 0 .. doc.length)
         {
+            Lex lex;
             auto t = doc[i];
-            auto ws = asString(t.whitespace_);
-            auto lemma = asString(t.lemma_);
-            auto tag = asString(t.tag_);
-            if (lemma == "-PRON-")
+            auto text = asString(t.text);
+            lex.word = asString(t.lemma_);
+            lex.inflect = asString(t.tag_);
+            lex.whitespace = asString(t.whitespace_);
+            lex.upper = 0;
+            foreach (dchar c; text)
             {
-                lemma = asString(t.text);
-                tag = "-PRON-";
+                import std.uni : isUpper;
+                if (isUpper(c)) lex.upper++;
+                if (lex.upper >= 2) break;
             }
-            lex ~= Lex(lemma, asString(t.tag_), ws);
+
+            // Detect contractions early
+            if (text == "n't") lex.word = text;
+            if (text == "n’t") lex.word = text;
+
+            // "-PRON-" isn't useful, not going to do anything handy with it anyway
+            if (lex.word == "-PRON-")
+            {
+                lex.word = text;
+                lex.inflect = "-PRON-";
+            }
+            // What's our inflection variant?
+            auto variants = getInflection(lex.word, lex.inflect);
+            if (!variants.not())
+            {
+                foreach (j; 0 .. variants.length)
+                {
+                    import std.uni, std.utf;
+                    if (icmp(text, asString(variants[j])) == 0)
+                    {
+                        lex.variant = j;
+                        break;
+                    }
+                }
+            }
+            analyzed ~= lex;
         }
-        verse.analyzed = lex;
+        verse.analyzed = analyzed;
     }
 
     void render(Bible bible)
@@ -80,13 +109,28 @@ class NLP
         foreach (lex; verse.analyzed)
         {
             auto s = getInflection(lex.word, lex.inflect);
+            string w;
             if (s.not)
             {
-                a ~= lex.word;
+                w = lex.word;
             }
             else
             {
-                a ~= asString(s);
+                w = asString(s[lex.variant]);
+            }
+            import std.uni, std.utf;
+            import nt.util;
+            switch (lex.upper)
+            {
+                case 0:
+                    a ~= w;
+                    break;
+                case 1:
+                    a ~= w.titleCase;
+                    break;
+                default:
+                    a ~= w.toUpper;
+                    break;
             }
             a ~= lex.whitespace;
         }
@@ -97,7 +141,6 @@ class NLP
     {
         import std.utf, std.uni;
         import std.experimental.logger;
-        tracef("asString called on %s", o.type.__name__.to_d!string);
         if (o.isinstance(tupleType))
         {
             // hopefully it's a tuple containing only one string?

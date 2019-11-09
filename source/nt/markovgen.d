@@ -351,6 +351,7 @@ void generateBibleMain(string[] args)
     rndGen.seed(seed);
     Bible bible = new Bible;
     bible.name = name;
+    foreach (person; people) bible.nameHistogram[person] = 0;
     auto numBooks = bookCount.uniform;
     bool[string] usedBookNames;
     foreach (booknum; 0 .. numBooks)
@@ -395,7 +396,7 @@ void generateBibleMain(string[] args)
                 }
                 if (kept == nextPara)
                 {
-                    v.analyzed ~= Lex(newParagraphMark, "_SP", "");
+                    v.analyzed ~= Lex(newParagraphMark, "_SP", 0, "");
                 }
                 v.verse = cast(uint)chapter.verses.length + 1;
                 chapter.verses ~= v;
@@ -407,7 +408,13 @@ void generateBibleMain(string[] args)
         bible.books ~= book;
     }
 save:
+    import std.path : buildPath;
+
+    writeJSON(buildPath(modelPath, "gen-nlp-prename-%s.json".format(seed)), bible);
+
     swapNames(bible, people, chapterFactor, bookFactor);
+
+    writeJSON(buildPath(modelPath, "gen-nlp-presynonym-%s.json".format(seed)), bible);
 
     if (dbFilename)
     {
@@ -418,7 +425,6 @@ save:
         db.cleanup;
     }
 
-    import std.path : buildPath;
     writeJSON(buildPath(modelPath, "gen-nlp-only-%s.json".format(seed)), bible);
 
     import nt.nlp;
