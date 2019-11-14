@@ -4,6 +4,7 @@ import pyd.pyd;
 import pyd.embedded;
 import pyd.pydobject;
 import nt.books;
+import std.experimental.logger;
 
 class NLP
 {
@@ -25,6 +26,96 @@ class NLP
 
     private PydObject nlp, getInflection, strType, tupleType;
 
+    void analyzeSentences(Bible bible)
+    {
+        foreach (book; bible.books)
+        {
+            foreach (chapter; book.chapters)
+            {
+                import std.algorithm;
+                import std.conv;
+                auto text = chapter.verses.map!(x => x.text).joiner(" ").to!string;
+                chapter.sentences = analyzeSentences(text);
+            }
+        }
+    }
+
+    Sentence[] analyzeSentences(string text)
+    {
+        auto doc = nlp(text);
+        Sentence[] sentences;
+        foreach (PydObject span; doc.sents)
+        {
+            auto s = new Sentence;
+            s.raw = asString(span.text);
+            auto rootTag = asString(span.root.tag_);
+            switch (rootTag)
+            {
+                case "VBZ":
+                case "VBP":
+                    s.tense = Tense.present;
+                    break;
+                case "VBD":
+                    s.tense = Tense.past;
+                    break;
+                case "VBG":
+                    s.tense = Tense.progressive;
+                    break;
+                case "VB":
+                    // VB is entirely determined by the auxiliaries.
+                    break;
+                case "VBN":
+                    // VBN is perfect, but not sure which.
+                    s.tense = Tense.perfect;
+                    break;
+                default:
+                    warningf("sentence root was a non-verb %s; sentence: %s", rootTag, s.raw);
+                    break;
+            }
+            foreach (child; span.root.children)
+            {
+                switch (asString(child.tag_))
+                {
+                    case "MD":
+                        // "modal" auxiliary
+                        if (asString(child.lemma_) == "will")
+                        {
+                            // not really modal now are we?
+                            s.tense |= Tense.future;
+                        }
+                        break;
+                    case "VBZ":
+                    case "VBP":
+                        // they have(VBP) run(VBN) very fast:
+                        //     present perfect; perfect already marked.
+                        // she has(VBZ) run(VBN) very fast:
+                        //     present perfect; perfect already marked.
+                        // they have(VBP) been(VBN) running(VBG):
+                        //     present perfect progressive
+                        //     progressive marked with main verb
+                        //     VBN will mark with perfect
+                        s.tense |= Tense.present;
+                        break;
+                    case "VBD":
+                        // present progressive / present perfect
+                        s.tense |= Tense.present;
+                        break;
+                    case "VBN":
+                        // they have(VBP) been(VBN) running(VBG):
+                        //     present perfect progressive
+                        //     progressive marked with main verb
+                        //     VBP marked present already
+                        s.tense |= Tense.perfect;
+                        break;
+                    default:
+                        // not an auxiliary verb or modal marker
+                        break;
+                }
+            }
+        }
+        return sentences;
+    }
+
     void analyze(Bible bible)
     {
         import std.range : enumerate;
@@ -33,7 +124,6 @@ class NLP
             analyze(verse);
             if (i % 1000 == 0)
             {
-                import std.experimental.logger;
                 tracef("analyzed %s verses", i);
             }
         }
@@ -41,8 +131,18 @@ class NLP
 
     void analyze(Verse verse)
     {
+        verse.analyzed = analyze(verse.text);
+    }
+
+    Lex[] analyze(string text)
+    {
+        auto doc = nlp(text.idup);
+        return toLex(doc);
+    }
+
+    Lex[] toLex(PydObject doc)
+    {
         Lex[] analyzed;
-        auto doc = nlp(verse.text.idup);
         foreach (i; 0 .. doc.length)
         {
             auto lex = new Lex;
@@ -103,12 +203,11 @@ class NLP
             }
             analyzed ~= lex;
         }
-        verse.analyzed = analyzed;
+        return analyzed;
     }
 
     void render(Bible bible)
     {
-        import std.experimental.logger;
         import std.range;
         foreach (i, verse; bible.allVerses.enumerate)
         {
@@ -162,7 +261,6 @@ class NLP
     private string asString(PydObject o)
     {
         import std.utf, std.uni;
-        import std.experimental.logger;
         if (o.isinstance(tupleType))
         {
             // hopefully it's a tuple containing only one string?

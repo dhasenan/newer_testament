@@ -1,8 +1,13 @@
 module nt.dictionary;
 
 import d2sqlite3;
-import std.typecons;
+import jsonizer;
+import nt.books;
+import std.experimental.logger;
 import std.string;
+import std.traits;
+import std.typecons;
+import std.uuid;
 
 enum PartOfSpeech : string
 {
@@ -14,7 +19,7 @@ enum PartOfSpeech : string
     properNoun = "properNoun"
 }
 
-struct Word
+class Word : DBObject
 {
     /// The word itself, forced into lowercase
     string word;
@@ -35,13 +40,13 @@ struct Word
     {
         import std.algorithm : sort, uniq;
         import std.array : array;
-        static foreach (f; _listfields)
+        foreach (i, v; this.tupleof)
         {
-            __traits(getMember, this, f) =
-                (__traits(getMember, this, f) ~ __traits(getMember, other, f))
-                    .sort
-                    .uniq
-                    .array;
+            static if (is(typeof(v) == string[]))
+            {
+                v ~= other.tupleof[i];
+                v = v.sort.uniq.array;
+            }
         }
     }
 
@@ -97,90 +102,3 @@ unittest
     }
 }
 
-class DB
-{
-    this(string filename)
-    {
-        _db = Database(filename);
-        _db.run(`CREATE TABLE IF NOT EXISTS words
-(
-    word TEXT PRIMARY KEY,
-    pronunciations TEXT,
-    synonyms TEXT,
-    antonyms TEXT,
-    hyponyms TEXT,
-    hypernyms TEXT
-)`);
-        _updater = _db.prepare(`
-                UPDATE words
-                SET pronunciations = :pronunciations,
-                    synonyms = :synonyms,
-                    antonyms = :antonyms,
-                    hyponyms = :hyponyms,
-                    hypernyms = :hypernyms
-                WHERE word = :word`);
-        _inserter = _db.prepare(`
-                INSERT INTO words
-                (word, pronunciations, synonyms, antonyms, hyponyms, hypernyms)
-                VALUES
-                (:word, :pronunciations, :synonyms, :antonyms, :hyponyms, :hypernyms)`);
-        _fetcher = _db.prepare(`SELECT * FROM words WHERE word = :word`);
-    }
-
-    void cleanup()
-    {
-        _updater.finalize;
-        _inserter.finalize;
-        _fetcher.finalize;
-        _db.close;
-    }
-
-    void beginTransaction()
-    {
-        _db.run("BEGIN TRANSACTION");
-    }
-
-    void commit()
-    {
-        _db.run("COMMIT TRANSACTION");
-    }
-
-    void save(Word word)
-    {
-        auto existing = get(word.word);
-        auto op = _inserter;
-        if (!existing.isNull)
-        {
-            word.merge(existing.get);
-            op = _updater;
-        }
-        op.reset;
-        op.bind(":word", word.word);
-        static foreach (f; _listfields)
-        {
-            op.bind(":" ~ f, __traits(getMember, word, f).join(","));
-        }
-        op.execute;
-    }
-
-    Nullable!Word get(string w)
-    {
-        _fetcher.reset;
-        _fetcher.bind(":word", w.toLower);
-        auto results = _fetcher.execute;
-        if (results.empty) return Nullable!Word.init;
-        auto row = results.front;
-        Word word;
-        word.word = row["word"].as!string;
-        static foreach (f; _listfields)
-        {
-            __traits(getMember, word, f) = row[f].as!string.split(",");
-        }
-        return nullable(word);
-    }
-    private:
-    Database _db;
-    Statement _updater, _fetcher, _inserter;
-}
-
-private enum _listfields = ["pronunciations", "synonyms", "antonyms", "hyponyms", "hypernyms"];

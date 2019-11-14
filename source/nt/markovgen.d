@@ -2,6 +2,7 @@
 module nt.markovgen;
 
 import nt.books;
+import nt.db;
 import nt.names;
 import nt.nlp;
 import nt.themes;

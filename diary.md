@@ -197,3 +197,22 @@ There are still some problems with names.
 
 I worked the name detection into a good-enough state. Still not awesome, but it works.
 
+## Flow
+
+The flow of the output is pretty awful when you train it on the entire bible. It's only somewhat
+better if you split it by section according to a standard split (prophecy, OT narrative, NT
+narrative, etc).
+
+Verses don't mesh together perfectly, so you'll get a semicolon followed by a new sentence. There's
+no tracking for quotes, so you're in the middle of narration and get a quote fragment, or a quote
+just doesn't end.
+
+Plan:
+
+* Switch from verses to sentences as the basic unit.
+* Detect quotes. They go into their own separate data store.
+* Try to keep tense consistent somehow? Maybe do theme+tense?
+* If sentences prove too long, figure out how to split and join them (conjunctions mainly?).
+
+Also, processing is exceedingly slow. I'm going to try putting stuff in a sqlite database instead of
+a JSON file so I can load it bit by bit.

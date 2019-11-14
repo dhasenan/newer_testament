@@ -3,6 +3,7 @@ module nt.names;
 
 import nt.books;
 import nt.util : toWords, titleCase;
+import nt.db;
 import nt.dictionary;
 
 import std.uni;
@@ -58,7 +59,7 @@ void findNames(Bible bible, string[] knownNonNames, DB dictionary)
                         lex.inflect = basicNoun;
                         continue;
                     }
-                    if (!dictionary.get(key).isNull)
+                    if (dictionary.getWord(key) is null)
                     {
                         nonNames[key] = 1;
                         lex.inflect = basicNoun;

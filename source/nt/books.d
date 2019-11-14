@@ -1,15 +1,25 @@
 /** Handler for the overall classure of the testament and its books. */
 module nt.books;
 import jsonizer;
+import std.uuid;
 
-class Bible
+immutable UUID uuidZero = UUID([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+struct dbignore {}
+
+abstract class DBObject
 {
-    mixin JsonizeMe;
+    UUID id = uuidZero;
+}
+
+class Bible : DBObject
+{
+    @dbignore { mixin JsonizeMe; }
     @jsonize
     {
         string name;
-        Book[] books;
-        ulong[string] nameHistogram;
+        @dbignore Book[] books;
+        @dbignore ulong[string] nameHistogram;
     }
 
     this() {}
@@ -26,37 +36,43 @@ class Bible
     }
 }
 
-class Book
+class Book : DBObject
 {
-    mixin JsonizeMe;
+    UUID bibleId;
+    @dbignore { mixin JsonizeMe; }
     @jsonize
     {
-        string[] dramatisPersonae;
+        @dbignore string[] dramatisPersonae;
         string name;
-        Chapter[] chapters;
+        @dbignore Chapter[] chapters;
     }
 
     this() {}
     this(string name) { this.name = name; }
 }
 
-class Chapter
+class Chapter : DBObject
 {
-    mixin JsonizeMe;
+    @dbignore { mixin JsonizeMe; }
     @jsonize
     {
-        string[] dramatisPersonae;
+        @dbignore string[] dramatisPersonae;
         uint chapter;
-        Verse[] verses;
+        @dbignore Verse[] verses;
     }
+    UUID bookId;
+    Sentence[] sentences;
 
     this() {}
-    this(uint chapter) { this.chapter = chapter; }
+    this(uint chapter)
+    {
+        this.chapter = chapter;
+    }
 }
 
-class Verse
+class Verse : DBObject
 {
-    mixin JsonizeMe;
+    @dbignore { mixin JsonizeMe; }
     @jsonize
     {
         uint verse;
@@ -64,6 +80,7 @@ class Verse
         Lex[] analyzed;
         string theme;
     }
+    UUID chapterId;
 
     this() {}
     this(uint verse, string text)
@@ -92,3 +109,61 @@ class Lex
         ubyte upper;
     }
 }
+
+/**
+ * Flags enum for quote status of a sentence.
+ */
+enum Quote
+{
+    /// this is pure narration
+    none = 0,
+    /// this is the start of a quote
+    start = 1,
+    /// this is the end of a quote
+    end = 2,
+    /// this is both the start and end of a quote
+    whole = 3,
+    /// this is a sentence wholly contained within a quote
+    middle = 4,
+    /// this is a sentence containing a quote
+    contains = 8,
+}
+
+enum Tense
+{
+    present = 1,
+    past = 2,
+    future = 4,
+    progressive = 8,
+    perfect = 16
+}
+
+
+class Sentence
+{
+    /// the unique ID of this sentence
+    UUID id;
+    /// the ID of the sentence this came from; if this is original, it points to itself
+    UUID sourceId;
+    /// the id of the chapter it's from
+    UUID chapterId;
+    /// the verse in which this sentence starts
+    ulong verse;
+    /// the raw text of the sentence
+    string raw;
+    /// the analyzed text of the sentence
+    Lex[] analyzed;
+    /// the theme of the sentence, what it's about
+    string theme;
+    /// whether this sentence is part of or contains a quote
+    Quote quote;
+    /// the main tense of this sentence (tense of its primary verb)
+    Tense tense;
+
+    this()
+    {
+        id = randomUUID;
+        sourceId = id;
+    }
+}
+

@@ -118,6 +118,9 @@ void doMain(string exeName, string[] rest)
             }
             writeJSON(output, bible);
             return;
+        case "jsonimport":
+            import nt.dictionary;
+            break;
         case "nlp":
             import nt.nlp;
             nlpMain(rest);

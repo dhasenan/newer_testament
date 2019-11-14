@@ -3,6 +3,7 @@ module nt.wiktionary;
 import nt.books;
 import nt.util;
 import nt.dictionary;
+import nt.db;
 
 import dxml.parser;
 import std.stdio;
@@ -99,14 +100,14 @@ void replaceSynonyms(DB db, Bible bible, double replacementRatio = 0.2)
                 continue;
             }
             // Try finding a replacement
-            auto r = db.get(key);
-            if (r.isNull)
+            auto r = db.getWord(key);
+            if (r is null)
             {
                 tracef("failed to find in dictionary: " ~ key);
                 stop[key] = true;
                 continue;
             }
-            auto newReplacement = r.get.randomReplacement;
+            auto newReplacement = r.randomReplacement;
             if (newReplacement.length == 0)
             {
                 tracef("empty replacement for " ~ key);
@@ -139,7 +140,7 @@ void loadDataFromMyThes(string mythesFilename, string dbFilename)
     {
         if (!line.startsWith("("))
         {
-            if (word != Word.init)
+            if (word)
             {
                 db.save(word);
                 added++;
@@ -149,7 +150,7 @@ void loadDataFromMyThes(string mythesFilename, string dbFilename)
                     db.beginTransaction;
                     tracef("added %s words from mythes", added);
                 }
-                word = Word.init;
+                word = null;
             }
             auto w = line.splitter("|").front.strip;
             if (!w.canFind!((dchar c) => c >= 0x80 || c == ' '))
@@ -164,7 +165,7 @@ void loadDataFromMyThes(string mythesFilename, string dbFilename)
             word.word = w.toLower;
             continue;
         }
-        if (word == Word.init) continue;
+        if (word is null) continue;
         foreach (w; line.splitter("|"))
         {
             auto a = w.indexOf(" (antonym)");
@@ -194,7 +195,7 @@ void loadDataFromMyThes(string mythesFilename, string dbFilename)
             }
         }
     }
-    if (word != Word.init) db.save(word);
+    if (word) db.save(word);
     db.commit;
     db.cleanup;
 }
