@@ -15,11 +15,12 @@ import std.uni;
 void importMain(string[] args)
 {
     import std.getopt;
-    string wik, mythes;
+    string wik, mythes, dictionary;
     string database = "dict.sqlite3";
     auto opts = getopt(args,
             "w|wiktionary", "wiktionary input", &wik,
             "m|mythes", "MyThes input", &mythes,
+            "u|dictionary", "path to word list", &dictionary,
             "d|database", "database location (created if necessary)", &database);
     if (opts.helpWanted)
     {
@@ -31,6 +32,8 @@ void importMain(string[] args)
         loadDataFromXml(wik, database);
     if (mythes)
         loadDataFromMyThes(mythes, database);
+    if (dictionary)
+        loadDataFromUsrShareDict(dictionary, database);
 }
 
 string replace(string input, string[string] replacements)
@@ -257,6 +260,9 @@ void loadDataFromXml(string xmlFilename, string dbFilename)
 
 bool addEntry(DB db, string title, string article)
 {
+    if (!article.canFind("English")) return false;
+    if (article.canFind("Proper Name")) return false;
+
     enum thesaurusStart = "Thesaurus:";
     enum engStartTag = "\n==English==\n";
 
@@ -366,7 +372,34 @@ void addDefinition(DB db, string title, string article)
 }
 
 
+void loadDataFromUsrShareDict(string dict, string dbPath)
+{
+    import std.range;
+    auto db = new DB(dbPath);
+    auto f = File(dict, "r");
+    db.beginTransaction;
+    foreach (i, line; f.byLine.enumerate)
+    {
+        line = line.strip;
+        if (line.indexOf("'") >= 0) continue;
+        if (line.indexOf(" ") >= 0) continue;
+        // TODO save proper names to db so we can catch them more reliably
+        if (line != line.toLower) continue;
+        Word word;
+        word.word = line.idup;
+        db.save(word);
+        if (i > 0 && i % 1000 == 0)
+        {
+            tracef("%s: imported %s words", dict, i);
+        }
+    }
+    db.commit;
+    db.cleanup;
+}
+
+
 static this() {
+    // Taken from a public listing based on mysql's stopwords list for English
     // TODO pare this list down
     stopWords = [
         "a": true,
@@ -693,6 +726,6 @@ static this() {
         "yours": true,
         "yourself": true,
         "yourselves": true,
-        ];
+    ];
 }
 

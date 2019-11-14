@@ -4,7 +4,7 @@ import std.experimental.logger;
 import std.uni;
 
 /// A wrapper around std.getopt to make it less terrible
-void argparse(T...)(string[] args, string description, T opts)
+string[] argparse(T...)(string[] args, string description, T opts)
 {
     import core.stdc.stdlib : exit;
     import std.getopt;
@@ -26,6 +26,7 @@ void argparse(T...)(string[] args, string description, T opts)
         stderr.writeln(e.message);
         exit(1);
     }
+    return args[1 .. $];
 }
 
 /// Separators to use for newline / new paragraph as needed
@@ -126,7 +127,7 @@ string titleCase(string word)
     // TODO reduce allocations if it's already in title case
     return word
         .splitter(" ")
-        .map!(x => x[0..1].toUpper ~ x[1 .. $].toLower)
+        .map!(x => x.length == 0 ? x : x[0..1].toUpper ~ x[1 .. $].toLower)
         .joiner(" ")
         .array
         .to!string;

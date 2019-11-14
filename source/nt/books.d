@@ -73,7 +73,7 @@ class Verse
     }
 }
 
-struct Lex
+class Lex
 {
     mixin JsonizeMe;
     @jsonize
@@ -83,11 +83,11 @@ struct Lex
         /// The inflection category, eg NN for a singular noun
         string inflect;
         /// The index of the variant of the inflection used
-        ulong variant;
+        ubyte variant;
         /// Whitespace following this word
         string whitespace;
         /// The ID of the person this refers to, if it's a proper noun
-        long person;
+        long person = -1;
         /// The case indicator for this word: 0 -> lower, 1 -> title, 2 -> upper
         ubyte upper;
     }

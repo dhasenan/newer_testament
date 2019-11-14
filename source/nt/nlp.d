@@ -45,7 +45,7 @@ class NLP
         auto doc = nlp(verse.text.idup);
         foreach (i; 0 .. doc.length)
         {
-            Lex lex;
+            auto lex = new Lex;
             auto t = doc[i];
             auto text = asString(t.text);
             lex.word = asString(t.lemma_);
@@ -60,17 +60,35 @@ class NLP
             }
 
             // Detect contractions early
-            if (text == "n't") lex.word = text;
-            if (text == "n’t") lex.word = text;
+            switch (text)
+            {
+                // fancy apostrophe versions
+                case "n’t":
+                case "’ll":
+                case "’re":
+                // plain apostrophe versions
+                case "n't":
+                case "'ll":
+                case "'re":
+                    lex.word = text;
+                    break;
+                default:
+            }
 
             // "-PRON-" isn't useful, not going to do anything handy with it anyway
             if (lex.word == "-PRON-")
             {
-                lex.word = text;
+                // make sure it's lower case so it appears in our stopwords collection
+                import std.string : toLower;
+                lex.word = text.toLower;
                 lex.inflect = "-PRON-";
             }
             // What's our inflection variant?
-            auto variants = getInflection(lex.word, lex.inflect);
+            auto variants = getInflection(
+                    lex.word,
+                    lex.inflect,
+                    // inflect_oov: if you don't have the exact form available, intuit it from rules
+                    true);
             if (!variants.not())
             {
                 foreach (j; 0 .. variants.length)
@@ -78,7 +96,7 @@ class NLP
                     import std.uni, std.utf;
                     if (icmp(text, asString(variants[j])) == 0)
                     {
-                        lex.variant = j;
+                        lex.variant = cast(ubyte)j;
                         break;
                     }
                 }
@@ -114,9 +132,13 @@ class NLP
             {
                 w = lex.word;
             }
-            else
+            else if (s.length > lex.variant)
             {
                 w = asString(s[lex.variant]);
+            }
+            else
+            {
+                w = asString(s[0]);
             }
             import std.uni, std.utf;
             import nt.util;

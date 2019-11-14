@@ -184,3 +184,16 @@ whitespace. No previous token or it had whitespace means this token should be "n
 The tags for a parsed word only indicate mood / tense, not person. More specifically, each
 supported inflection category of a word has multiple forms. I should persist that to avoid issues
 like "You open your hand; they am satisfied with good."
+
+## Name futzing
+
+There are still some problems with names.
+
+* For a little while, we were detecting everything as a name.
+* The wiktionary input contains some proper names. We need to exclude anything with a "Proper Name"
+  section (eg Esau).
+* The wiktionary input contains entries for languages other than English, and these entries
+  sometimes include things labeled as common nouns that look like names.
+
+I worked the name detection into a good-enough state. Still not awesome, but it works.
+

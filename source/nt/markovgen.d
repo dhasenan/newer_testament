@@ -86,11 +86,10 @@ void bakeBiblesMain(string[] args)
 {
     string model;
     string[] inputs;
-    ulong minThreshold = 20;
-    ulong maxThreshold = 1000;
 
     string verseThemeArg = "1-3";
     string nameArg = "1-3";
+    string themeThresholdArg = "20-1000";
     auto originalArgs = args;
     auto opts = getopt(args,
             std.getopt.config.required,
@@ -99,13 +98,7 @@ void bakeBiblesMain(string[] args)
             "V|verse-range",
                 "how many verses of context to use in verse model",
                 &verseThemeArg,
-            "n|name-range", "how many letters of context to use in name model", &nameArg,
-            "min-threshold",
-                "minimum number of word occurrences to consider something a theme",
-                &minThreshold,
-            "max-threshold",
-                "maximum number of word occurrences to consider something a theme",
-                &maxThreshold);
+            "n|name-range", "how many letters of context to use in name model", &nameArg);
 
     if (opts.helpWanted)
     {
@@ -396,7 +389,11 @@ void generateBibleMain(string[] args)
                 }
                 if (kept == nextPara)
                 {
-                    v.analyzed ~= Lex(newParagraphMark, "_SP", 0, "");
+                    auto lex = new Lex;
+                    lex.word = newParagraphMark;
+                    lex.inflect = "_SP";
+                    lex.person = -1;
+                    v.analyzed ~= lex;
                 }
                 v.verse = cast(uint)chapter.verses.length + 1;
                 chapter.verses ~= v;
@@ -435,6 +432,7 @@ save:
         outfile = name ~ ".json";
     }
     tracef("saving bible json to %s", outfile);
+    writeJSON(outfile, bible);
 
     import nt.publish;
     if (epubFile == "")

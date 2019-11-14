@@ -1,19 +1,26 @@
+# Intermediate and output files that we can build
+*.json
+*.xml
+*.bz2
+*.epub
+*.zip
+output/
+models/
+input/
+log
+*.log
+
 # Compiled Object files
 *.o
 *.obj
-
-# Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
-
-# Compiled Static libraries
 *.a
 *.lib
-
-# Executables
 *.exe
 newer_testament
+newer_testament-test-library
 
 # DUB
 .dub
@@ -23,13 +30,6 @@ docs/
 
 # Code coverage
 *.lst
-
-# Output files
-*.json
-*.epub
-log
-*.log
-*.model
 
 # Editor files
 *.swp

@@ -19,3 +19,22 @@ Stretch goals:
   prefer particular synonyms out of each synonym set).
 * Incorporate Catholic apocrypha
 * Incorporate Book of Mormon
+
+## Prerequisites
+
+`newer_testament` relies on:
+
+* make
+* Python 3.7
+* D 2.083 or higher
+
+## Building a basic bible
+
+Run `make` to produce a few sample bibles.
+
+To make with a new seed, run `make output/Book_of_Neia_N.epub` where `N` is the seed to use as an
+unsigned 32-bit integer.
+
+To customize the model and generation parameters, examine the makefile.
+
+## Advanced usage

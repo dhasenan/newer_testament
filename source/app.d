@@ -174,32 +174,13 @@ void doMain(string exeName, string[] rest)
             auto bible = readJSON!Bible(rest[1]);
             writeEpub(bible, bible.name ~ ".epub");
             return;
+        case "split-canonical":
+            import nt.sliceanddice;
+            slice(rest);
+            return;
         case "merge-bibles":
-            import std.getopt;
-            string[] inputs;
-            string output;
-            auto opts = getopt(rest,
-                    config.required,
-                    "i|inputs", "input bibles to merge", &inputs,
-                    config.required,
-                    "o|output", "output bible", &output);
-            auto bibles = inputs.map!(x => readJSON!Bible(x));
-            foreach (bible; bibles[1..$])
-            {
-                bibles[0].books ~= bible.books;
-                foreach (k, v; bible.nameHistogram)
-                {
-                    if (auto p = k in bibles[0].nameHistogram)
-                    {
-                        (*p) += v;
-                    }
-                    else
-                    {
-                        bibles[0].nameHistogram[k] = v;
-                    }
-                }
-            }
-            writeJSON(output, bibles[0]);
+            import nt.sliceanddice;
+            concat(rest);
             return;
         case "build-dict":
             importMain(rest);

@@ -4,10 +4,22 @@ import d2sqlite3;
 import std.typecons;
 import std.string;
 
+enum PartOfSpeech : string
+{
+    noun = "noun",
+    verb = "verb",
+    adjective = "adjective",
+    adverb = "adverb",
+    preposition = "preposition",
+    properNoun = "properNoun"
+}
+
 struct Word
 {
     /// The word itself, forced into lowercase
     string word;
+    /// What part of speech (noun, verb, adjective, adverb, preposition, proper noun)
+    PartOfSpeech partOfSpeech;
     /// Ways to pronounce it, in IPA
     string[] pronunciations;
     ///
