@@ -45,6 +45,7 @@ class Book : DBObject
         @dbignore string[] dramatisPersonae;
         string name;
         @dbignore Chapter[] chapters;
+        ulong bookNumber;
     }
 
     this() {}

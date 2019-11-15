@@ -2,6 +2,7 @@
 module nt.input.bom;
 
 import nt.books;
+import nt.db;
 
 import std.conv;
 import std.json;
@@ -12,15 +13,13 @@ import std.typecons;
 import std.algorithm.iteration : splitter;
 import std.string;
 
-Bible importBoM(string path)
+Bible importBoM(string path, DB db)
 {
-    return toBookOfMormon(path.readText);
-}
+    auto text = path.readText;
 
-Bible toBookOfMormon(string text)
-{
     auto cvr = regex("([0-9a-zA-Z ]*) ([0-9]+):([0-9]+)\n [0-9]+ ");
     auto bible = new Bible("Book of Mormon");
+    db.save(bible);
     foreach (part; text.splitter("\n\n"))
     {
         // It might be a verse header, a verse, a book preamble, a book name, or a chapter header.
@@ -35,14 +34,26 @@ Bible toBookOfMormon(string text)
         auto t = m.post.strip;
         if (bible.books.length == 0 || bible.books[$-1].name != book)
         {
-            bible.books ~= new Book(book);
+            auto bk = new Book(book);
+            bk.bookNumber = bible.books.length + 1;
+            bk.bibleId = bible.id;
+            bible.books ~= bk;
+            db.save(bk);
         }
         if (bible.books[$-1].chapters.length == 0
                 || bible.books[$-1].chapters[$-1].chapter != chapter)
         {
-            bible.books[$-1].chapters ~= new Chapter(chapter);
+            auto ch = new Chapter(chapter);
+            auto bk = bible.books[$-1];
+            ch.bookId = bk.id;
+            db.save(ch);
+            bk.chapters ~= ch;
         }
-        bible.books[$-1].chapters[$-1].verses ~= new Verse(verse, t.replace("\n", " "));
+        auto v = new Verse(verse, t.replace("\n", " "));
+        auto ch = bible.books[$-1].chapters[$-1];
+        v.chapterId = ch.id;
+        db.save(v);
+        ch.verses ~= v;
     }
     return bible;
 }

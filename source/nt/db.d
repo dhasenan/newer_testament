@@ -1,9 +1,12 @@
 module nt.db;
 
-import d2sqlite3;
-import jsonizer;
 import nt.books;
 import nt.dictionary;
+
+import d2sqlite3;
+import jsonizer;
+
+import std.algorithm;
 import std.experimental.logger;
 import std.string;
 import std.traits;
@@ -16,20 +19,21 @@ class DB
     {
         _db = Database(filename);
         _db.run(`PRAGMA foreign_keys = ON`);
-        createTablesForBookDbObjects;
+        createTablesAndQueries;
     }
 
     void cleanup()
     {
-        _fetcher.finalize;
         foreach (s; [_inserts, _gets, _updates, _removes])
         {
             foreach (k, ref v; s)
             {
                 v.finalize;
-                v = typeof(v).init;
             }
         }
+        foreach (ref v; this.tupleof)
+            static if (is (typeof(v) == Statement))
+                v.finalize;
         _db.close;
     }
 
@@ -100,12 +104,27 @@ class DB
         return inflateSingle!Word(_fetcher);
     }
 
-    private:
+    auto allVerses(UUID bibleId)
+    {
+        _allVerses.reset;
+        _allVerses.bind("@bibleId", bibleId.toString);
+        auto result = _allVerses.execute;
+        return result.map!(x => inflate!Verse(x));
+    }
+
+    Bible bibleByName(string name)
+    {
+        _bibleByName.reset;
+        _bibleByName.bind("@name", name);
+        return inflateSingle!Bible(_bibleByName);
+    }
+
+private:
     Database _db;
-    Statement _fetcher;
+    Statement _fetcher, _allVerses, _bibleByName;
     Statement[ClassInfo] _inserts, _updates, _gets, _removes;
 
-    void createTablesForBookDbObjects()
+    void createTablesAndQueries()
     {
         static foreach (m; __traits(allMembers, nt.books))
         {{
@@ -119,6 +138,15 @@ class DB
         createTable!Word;
 
         _fetcher = _db.prepare(`SELECT * FROM words WHERE word = :word`);
+        _allVerses = _db.prepare(`
+                SELECT v.* FROM
+                    books AS b
+                    INNER JOIN chapters AS c ON c.bookId = b.id
+                    INNER JOIN verses AS v ON v.chapterId = c.id
+                    WHERE b.bibleId = @bibleId
+                    ORDER BY b.bookNumber ASC, c.chapter ASC, v.verse ASC
+                     `);
+        _bibleByName = _db.prepare(`SELECT * FROM bibles WHERE name = @name`);
     }
 
     // create a table, build default queries for it
@@ -201,10 +229,6 @@ class DB
             mktable ~= constraint;
         }
         mktable ~= `)`;
-
-        tracef("%s create table sql: %s", T.stringof, mktable.data);
-        tracef("%s insert sql: %s", T.stringof, insql.data);
-        tracef("%s update sql: %s", T.stringof, updsql.data);
 
         _db.run(mktable.data);
 

@@ -1,6 +1,7 @@
 import std.stdio;
 
 import nt.books;
+import nt.db;
 import nt.markovgen;
 import nt.publish;
 import nt.themes;
@@ -95,28 +96,35 @@ void doMain(string exeName, string[] rest)
             import nt.input.bom;
             import nt.input.web;
             string input, output, type;
+            string database = ":memory:";
             argparse(rest, "Import a bible from original sources",
                     config.required,
-                    "t|type", &type,
+                    "t|type", "the kind of bible (kjv, bom, web)", &type,
                     config.required,
-                    "i|input", &input,
-                    config.required,
-                    "o|output", &output);
+                    "i|input", "input file", &input,
+                    "o|output", "output json file", &output,
+                    "d|database", "sqlite database to store bible in", &database);
+            DB db = new DB(database);
+            scope (exit) db.cleanup;
+
+            db.beginTransaction;
             Bible bible;
             type = type.toLower;
             if (type == "kjv")
-                bible = importKJV(input);
+                bible = importKJV(input, db);
             else if (type == "bom")
-                bible = importBoM(input);
+                bible = importBoM(input, db);
             else if (type == "web")
-                bible = importWEB(input);
+                bible = importWEB(input, db);
             else
             {
                 stderr.writefln("unrecognized bible type '%s'", type);
                 import core.stdc.stdlib : exit;
                 exit(1);
             }
-            writeJSON(output, bible);
+            db.commit;
+            if (output) writeJSON(output, bible);
+            writefln("imported bible %s", bible.id);
             return;
         case "jsonimport":
             import nt.db;
