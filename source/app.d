@@ -119,7 +119,34 @@ void doMain(string exeName, string[] rest)
             writeJSON(output, bible);
             return;
         case "jsonimport":
-            import nt.dictionary;
+            import nt.db;
+            string dbpath, input;
+            argparse(rest, "import a JSON bible into a database",
+                    config.required,
+                    "d|database", "database filename", &dbpath,
+                    config.required,
+                    "i|input", "path to JSON bible", &input);
+            auto db = new DB(dbpath);
+            scope (exit) db.cleanup;
+            auto bible = readJSON!Bible(input);
+            db.beginTransaction;
+            db.save(bible);
+            foreach (book; bible.books)
+            {
+                book.bibleId = bible.id;
+                db.save(book);
+                foreach (chapter; book.chapters)
+                {
+                    chapter.bookId = book.id;
+                    db.save(chapter);
+                    foreach (verse; chapter.verses)
+                    {
+                        verse.chapterId = chapter.id;
+                        db.save(verse);
+                    }
+                }
+            }
+            db.commit;
             break;
         case "nlp":
             import nt.nlp;

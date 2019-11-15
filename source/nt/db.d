@@ -15,6 +15,7 @@ class DB
     this(string filename)
     {
         _db = Database(filename);
+        _db.run(`PRAGMA foreign_keys = ON`);
         createTablesForBookDbObjects;
     }
 
@@ -23,9 +24,10 @@ class DB
         _fetcher.finalize;
         foreach (s; [_inserts, _gets, _updates, _removes])
         {
-            foreach (k, v; s)
+            foreach (k, ref v; s)
             {
                 v.finalize;
+                v = typeof(v).init;
             }
         }
         _db.close;
@@ -39,26 +41,6 @@ class DB
     void commit()
     {
         _db.run("COMMIT TRANSACTION");
-    }
-
-    void importBible(Bible bible)
-    {
-        save(bible);
-        foreach (book; bible.books)
-        {
-            book.bibleId = bible.id;
-            save(book);
-            foreach (chapter; book.chapters)
-            {
-                chapter.bookId = book.id;
-                save(chapter);
-                foreach (verse; chapter.verses)
-                {
-                    verse.chapterId = chapter.id;
-                    save(verse);
-                }
-            }
-        }
     }
 
     private template takeField(T, string name)
@@ -81,21 +63,22 @@ class DB
             op = _inserts[T.classinfo];
         }
         op.reset;
+        op.bind("@id", obj.id.toString);
         static foreach (i, field; fieldNames)
         {
             static if (takeField!(T, field))
             {
                 static if (is(FieldTypes[i] == Lex[]))
                 {
-                    op.bind(field, toJSONString(__traits(getMember, obj, field)));
+                    op.bind("@" ~ field, toJSONString(__traits(getMember, obj, field)));
                 }
                 else static if (is(FieldTypes[i] == UUID))
                 {
-                    op.bind(field, __traits(getMember, obj, field).toString);
+                    op.bind("@" ~ field, __traits(getMember, obj, field).toString);
                 }
                 else
                 {
-                    op.bind(field, __traits(getMember, obj, field));
+                    op.bind("@" ~ field, __traits(getMember, obj, field));
                 }
             }
         }
@@ -107,25 +90,19 @@ class DB
         auto query = _gets[T.classinfo];
         query.reset;
         query.bind("id", id.toString);
-        auto results = query.execute;
-        if (results.empty) return null;
-        auto row = results.front;
-        return inflate!T(row);
+        return inflateSingle(query);
     }
 
     Word getWord(string w)
     {
         _fetcher.reset;
         _fetcher.bind(":word", w.toLower);
-        auto results = _fetcher.execute;
-        if (results.empty) return null;
-        auto row = results.front;
-        return inflate!Word(row);
+        return inflateSingle!Word(_fetcher);
     }
 
     private:
     Database _db;
-    Statement _updater, _fetcher, _inserter;
+    Statement _fetcher;
     Statement[ClassInfo] _inserts, _updates, _gets, _removes;
 
     void createTablesForBookDbObjects()
@@ -141,28 +118,22 @@ class DB
 
         createTable!Word;
 
-        _db.run(`PRAGMA foreign_keys = ON`);
-
-        // Constraints; we don't intuit them currently
-        _db.run(`ALTER TABLE words ADD CONSTRAINT uniq_words_word UNIQUE words(word)`);
-        _db.run(`ALTER TABLE books ADD CONSTRAINT fk_books_bibles
-                FOREIGN KEY (bibleId) REFERENCES bibles(id)`);
-        _db.run(`ALTER TABLE chapters ADD CONSTRAINT fk_chapters_books
-                FOREIGN KEY (bookId) REFERENCES books(id)`);
-        _db.run(`ALTER TABLE verses ADD CONSTRAINT verses_chapters
-                FOREIGN KEY (chapterId) REFERENCES chapter(id)`);
-
         _fetcher = _db.prepare(`SELECT * FROM words WHERE word = :word`);
     }
 
     // create a table, build default queries for it
     void createTable(T)()
     {
+        assert(!(T.classinfo in _updates));
+        assert(!(T.classinfo in _gets));
+        assert(!(T.classinfo in _inserts));
+        assert(!(T.classinfo in _removes));
         string table = T.classinfo.name[1 + T.classinfo.name.lastIndexOf(".") .. $] ~ "s";
         enum fieldNames = FieldNameTuple!T;
         alias FieldTypes = Fields!T;
         import std.array;
 
+        string[] constraints;
         Appender!string mktable;
         mktable ~= `CREATE TABLE IF NOT EXISTS `;
         mktable ~= table;
@@ -170,22 +141,19 @@ class DB
         Appender!string updsql, insql, argList;
         updsql ~= `UPDATE `
             ~ table
-            ~ `SET `;
+            ~ ` SET `;
 
         insql ~= `INSERT INTO `
             ~ table
-            ~ `(`;
+            ~ `(id`;
+        argList ~= "@id";
         auto first = true;
         static foreach (i, field; fieldNames)
         {
             static if (takeField!(T, field))
             {
-                if (!first)
-                {
-                    insql ~= ", ";
-                    argList ~= ", ";
-                    updsql ~= ", ";
-                }
+                if (!first) updsql ~= ", ";
+                first = false;
 
                 mktable ~= ", ";
                 mktable ~= field;
@@ -197,31 +165,46 @@ class DB
                 {
                     mktable ~= " REAL";
                 }
+                else static if (is(FieldTypes[i] == UUID) && field != "id")
+                {
+                    mktable ~= " TEXT";
+                    constraints ~= `FOREIGN KEY (`
+                        ~ field
+                        ~ `) REFERENCES `
+                        ~ field.replace("Id", "s")
+                        ~ `(id)`;
+                }
                 else
                 {
                     mktable ~= " TEXT";
                 }
 
+                insql ~= ", ";
                 insql ~= field;
 
-                argList ~= ":";
+                argList ~= ", ";
+                argList ~= "@";
                 argList ~= field;
 
                 updsql ~= field;
-                updsql ~= " = :";
+                updsql ~= " = @";
                 updsql ~= field;
-
-                first = false;
             }
         }
         insql ~= `) VALUES (`
             ~ argList.data
             ~ `)`;
-        updsql ~= ` WHERE id = :id`;
+        updsql ~= ` WHERE id = @id`;
+        foreach (constraint; constraints)
+        {
+            mktable ~= `, `;
+            mktable ~= constraint;
+        }
+        mktable ~= `)`;
 
-        tracef("%s create table sql: %s", mktable.data);
-        tracef("%s insert sql: %s", insql.data);
-        tracef("%s update sql: %s", insql.data);
+        tracef("%s create table sql: %s", T.stringof, mktable.data);
+        tracef("%s insert sql: %s", T.stringof, insql.data);
+        tracef("%s update sql: %s", T.stringof, updsql.data);
 
         _db.run(mktable.data);
 
@@ -259,6 +242,21 @@ class DB
             }
         }
         return obj;
+    }
+
+    T inflateSingle(T)(ref Statement stmt)
+    {
+        auto results = stmt.execute;
+        if (results.empty) return null;
+        auto row = results.front;
+        return inflate!T(row);
+    }
+
+    T inflateMany(T)(ref Statement stmt)
+    {
+        auto results = stmt.execute;
+        if (results.empty) return null;
+        return results.map!(x => this.inflate!T(x)).array;
     }
 }
 
