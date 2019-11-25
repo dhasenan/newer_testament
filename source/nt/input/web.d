@@ -49,16 +49,16 @@ Bible importWEB(string filename, DB db)
         db.save(book);
         foreach (chapter; book.chapters)
         {
-            chapter.bookId = book.id;
-            db.save(chapter);
+            //chapter.bookId = book.id;
+            //db.save(chapter);
             foreach (verse; chapter.verses)
             {
+                verse.bookId = book.id;
                 verse.text = verse.text
                     .replace("—", " — ")
                     .replace("eThen", "Then")
                     .replace("ofAdin", "of Adin")
                     ;
-                verse.chapterId = chapter.id;
                 db.save(verse);
             }
         }

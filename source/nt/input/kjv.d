@@ -66,7 +66,7 @@ Bible importKJV(string path, DB db)
                 .strip
                 .replace("\n", " ");
             auto verse = new Verse(v, cleaned);
-            verse.chapterId = book.chapters[$-1].id;
+            verse.chapterNum = bible.books[$-1].chapters.length;
             book.chapters[ch - 1].verses ~= verse;
             db.save(verse);
             splat.popFront;

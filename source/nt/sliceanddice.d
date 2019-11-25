@@ -1,68 +1,103 @@
 module nt.sliceanddice;
 
+import nt.db;
 import nt.books;
 import nt.util;
+
 import jsonizer;
+
+import core.stdc.stdlib : exit;
 import std.file;
 import std.path;
+import std.stdio;
 import std.string;
+import std.experimental.logger;
+import std.conv : to;
 
 void slice(string[] args)
 {
     string input, output;
+    ulong id;
+    string database;
     import std.getopt : config;
     argparse(args, "Split a Bible into canonical categories",
             config.required,
-            "i|input", "input bible", &input,
+            "d|database", "database location", &database,
             config.required,
-            "o|output", "output directory", &output);
-    auto bible = readJSON!Bible(input);
-    mkdirRecurse(output);
+            "id", "id of the bible to split", &id);
+    slice(database, id);
+}
+
+ulong[string] slice(string database, ulong id)
+{
+    ulong[string] ids;
+    auto db = new DB(database);
+    scope(exit) db.cleanup;
+    auto bible = db.get!Bible(id);
+    if (bible is null)
+    {
+        errorf("bible %s not found", id);
+        exit(1);
+    }
+    auto books = db.booksByBible(id);
     foreach (cat, names; categories)
     {
-        auto b = new Bible;
-        b.name = bible.name ~ " -- " ~ cat;
-        foreach (book; bible.books)
+        db.beginTransaction;
+        auto slice = new Bible;
+        slice.name = bible.name ~ " -- " ~ cat;
+        foreach (book; books)
         {
             foreach (name; names)
             {
-                if (book.name.toLower.indexOf(name) >= 0)
-                {
-                    b.books ~= book;
-                }
+                // Lazily add the bible to the db in case we have empty segments
+                if (slice.id == 0) db.save(slice);
+                copyBook(db, book, slice.id);
             }
-            writeJSON(buildPath(output, cat ~ ".json"), b);
         }
+        db.commit;
+        writefln("%s: %s", slice.name, slice.id);
+        ids[cat] = slice.id;
     }
+    return ids;
+}
+
+private void copyBook(DB db, Book book, ulong newBibleId)
+{
+    auto bookCopy = new Book;
+    bookCopy.name = book.name;
+    bookCopy.id = 0;
+    bookCopy.bookNumber = book.bookNumber;
+    bookCopy.bibleId = newBibleId;
+    db.save(bookCopy);
+    db.copyVersesByBook(book.id, bookCopy.id);
 }
 
 void concat(string[] args)
 {
     import std.getopt : config;
-    string output;
+    ulong[] ids;
+    string database;
     string name;
     argparse(args, "Combine several bibles into one",
-            config.required,
-            "o|output", "output bible", &output,
-            "n|name", "name of combined bible", &name);
+            config.required, "d|database", "database file", &database,
+            config.required, "n|name", "name of combined bible", &name);
+    auto db = new DB(database);
+    scope (exit) db.cleanup;
+
     auto bible = new Bible;
+    bible.name = name;
+    db.save(bible);
+
+    db.beginTransaction;
     foreach (input; args)
     {
-        auto b = readJSON!Bible(input);
-        bible.books ~= b.books;
-        foreach (k, v; b.nameHistogram)
+        auto b = db.booksByBible(input.to!ulong);
+        foreach (book; b)
         {
-            if (auto p = k in bible.nameHistogram)
-            {
-                (*p) += v;
-            }
-            else
-            {
-                bible.nameHistogram[k] = v;
-            }
+            copyBook(db, book, bible.id);
         }
     }
-    writeJSON(output, bible);
+    db.commit;
 }
 
 enum categories = [

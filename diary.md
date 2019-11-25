@@ -210,9 +210,10 @@ just doesn't end.
 Plan:
 
 * Switch from verses to sentences as the basic unit.
-* Detect quotes. They go into their own separate data store.
+* Detect quotes. They go into their own separate chain.
 * Try to keep tense consistent somehow? Maybe do theme+tense?
 * If sentences prove too long, figure out how to split and join them (conjunctions mainly?).
 
 Also, processing is exceedingly slow. I'm going to try putting stuff in a sqlite database instead of
 a JSON file so I can load it bit by bit.
+

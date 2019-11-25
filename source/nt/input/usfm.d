@@ -24,7 +24,7 @@ Book usfmToBook(string text)
 
     enum chapterMarker = `\c `;
     remaining = remaining[remaining.indexOf(chapterMarker) .. $];
-    uint chapterNumber = 1;
+    uint chapterNum = 1;
     while (remaining.length)
     {
         // Last time, we left on the `\c` for the next chapter's start,
@@ -33,8 +33,8 @@ Book usfmToBook(string text)
         auto end = remaining.index(chapterMarker);
         auto chapText = remaining[0 .. end];
         remaining = remaining[end .. $];
-        book.chapters ~= readChapter(chapText, chapterNumber);
-        chapterNumber++;
+        book.chapters ~= readChapter(chapText, chapterNum);
+        chapterNum++;
     }
 
     return book;
@@ -86,10 +86,10 @@ enum removeMarkup = [
     "\\bk", // name of some bible book
 ];
 
-Chapter readChapter(string text, int chapterNumber)
+Chapter readChapter(string text, int chapterNum)
 {
     auto chapter = new Chapter;
-    chapter.chapter = chapterNumber;
+    chapter.chapter = chapterNum;
     enum verseMarker = `\v `;
     auto remaining = text;
     auto s = remaining.indexOf(verseMarker);
@@ -179,6 +179,7 @@ whichCommand:
             }
         }
         auto verse = new Verse;
+        verse.chapterNum = chapterNum;
         verse.text = a.data.replace(" \n", "").replace("\n", "");
         chapter.verses ~= verse;
     }

@@ -1,10 +1,16 @@
 module nt.nlp;
 
+import nt.books;
+import nt.db;
+
 import pyd.pyd;
 import pyd.embedded;
 import pyd.pydobject;
-import nt.books;
+
+import std.algorithm;
+import std.conv;
 import std.experimental.logger;
+import std.uuid;
 
 class NLP
 {
@@ -112,6 +118,8 @@ class NLP
                         break;
                 }
             }
+
+            sentences ~= s;
         }
         return sentences;
     }
@@ -300,18 +308,64 @@ void nlpMain(string[] args)
     import nt.util;
     import jsonizer;
 
-    string input, output;
+    string database;
+    ulong bibleId;
 
     argparse(args,
             "Produce NLP analysis annotations for a bible",
             config.required,
-            "i|input", "input bible", &input,
+            "b|bible-id", "ID of the Bible to update", &bibleId,
             config.required,
-            "o|output", "output bible", &output);
+            "d|database", "database to be updated in-place", &database);
+
     auto nlp = new NLP;
-    auto bible = readJSON!Bible(input);
-    nlp.analyze(bible);
-    writeJSON(output, bible);
+    auto db = new DB(database);
+    scope (success) { trace("cleaning up db"); db.cleanup; }
+
+    trace("clearing existing analysis");
+    db.beginTransaction;
+    db.clearExistingAnalysis(bibleId);
+    db.commit;
+
+    trace("finding books");
+    db.beginTransaction;
+    auto books = db.booksByBible(bibleId);
+    trace("paging through chapters");
+    foreach (book; books)
+    {
+        auto max = db.maxChapter(book.id);
+        foreach (chapterNum; 1 .. max + 1)
+        {
+            auto chapter = db.versesByChapter(book.id, chapterNum);
+            if (chapter.length == 0) continue;
+            tracef("book %s chapter %s has %s verses", book.name, chapterNum, chapter.length);
+            auto text = chapter.map!(x => x.text).joiner(" ").to!string;
+            tracef("got text");
+            Sentence[] sentences;
+            try
+            {
+                sentences = nlp.analyzeSentences(text);
+            }
+            catch (Throwable e)
+            {
+                errorf("failed to get sentences: %x; aborting", cast(void*)e);
+                break;
+            }
+            tracef("%s sentences to save", sentences.length);
+            foreach (f; sentences[0].tupleof)
+            {
+                trace(f);
+            }
+            foreach (i, sentence; sentences)
+            {
+                sentence.bookId = book.id;
+                sentence.chapterNum = chapterNum;
+                sentence.offset = i;
+                db.save(sentence);
+            }
+        }
+    }
+    db.commit;
 }
 
 void nlpRenderMain(string[] args)
@@ -322,14 +376,25 @@ void nlpRenderMain(string[] args)
 
     string input, output;
 
+    string database;
+    ulong bibleId;
+
     argparse(args,
-            "Render NLP analysis of a Bible",
+            "Render NLP analysis back into text, in-place",
             config.required,
-            "i|input", "input bible", &input,
+            "b|bible-id", "ID of the Bible to update", &bibleId,
             config.required,
-            "o|output", "output bible", &output);
+            "d|database", "database to be updated in-place", &database);
+
     auto nlp = new NLP;
-    auto bible = readJSON!Bible(input);
-    nlp.render(bible);
-    writeJSON(output, bible);
+    auto db = new DB(database);
+    scope (exit) db.cleanup;
+
+    db.beginTransaction;
+    foreach (verse; db.allVerses(bibleId))
+    {
+        nlp.render(verse);
+        db.save(verse);
+    }
+    db.commit;
 }

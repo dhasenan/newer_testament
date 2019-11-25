@@ -51,7 +51,7 @@ Bible importBoM(string path, DB db)
         }
         auto v = new Verse(verse, t.replace("\n", " "));
         auto ch = bible.books[$-1].chapters[$-1];
-        v.chapterId = ch.id;
+        v.chapterNum = bible.books[$-1].chapters.length;
         db.save(v);
         ch.verses ~= v;
     }

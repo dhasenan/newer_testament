@@ -15,6 +15,7 @@ import markov;
 
 import core.time;
 import std.algorithm;
+import std.conv : to;
 import std.experimental.logger;
 import std.file;
 import std.getopt;
@@ -25,35 +26,6 @@ import std.stdio;
 import std.string;
 
 enum nameStart = "{", nameEnd = "}";
-
-void buildThemeChain(Bible bible, string outputChain, Interval verseContext)
-{
-    auto verses = MarkovChain!string(verseContext.all);
-    foreach (book; bible.books)
-    {
-        foreach (chapter; book.chapters)
-        {
-            auto themeSequence =
-                chapter.verses
-                .map!(x => x.theme)
-                .filter!(x => x.length > 0)
-                .array;
-            verses.train([nameStart] ~ themeSequence ~ [nameEnd]);
-        }
-        tracef("trained %s book %s", bible.name, book.name);
-    }
-    verses.encodeBinary(File(outputChain, "w"));
-}
-
-void buildNameChain(Bible bible, string outputChain, Interval nameContext)
-{
-    auto nameChain = MarkovChain!string(nameContext.all);
-    foreach (name, v; bible.nameHistogram)
-    {
-        nameChain.train([nameStart] ~ name.toLower.split("") ~ [nameEnd]);
-    }
-    nameChain.encodeBinary(File(outputChain, "w"));
-}
 
 string genName(ref MarkovChain!string chain, Interval length)
 {
@@ -85,17 +57,17 @@ string genName(ref MarkovChain!string chain, Interval length)
 
 void bakeBiblesMain(string[] args)
 {
-    string model;
-    string[] inputs;
+    string database;
+    ulong modelId;
 
     string verseThemeArg = "1-3";
     string nameArg = "1-3";
     string themeThresholdArg = "20-1000";
-    auto originalArgs = args;
     auto opts = getopt(args,
             std.getopt.config.required,
-            "m|model", "model name to build", &model,
-            "i|inputs", "input bibles (JSON) to build model from", &inputs,
+            "d|database", "database path", &database,
+            std.getopt.config.required,
+            "m|model", "ID of model name", &modelId,
             "V|verse-range",
                 "how many verses of context to use in verse model",
                 &verseThemeArg,
@@ -107,79 +79,39 @@ void bakeBiblesMain(string[] args)
         return;
     }
 
-    import std.file : mkdirRecurse;
-    auto outpath = "models/" ~ model;
-    mkdirRecurse(outpath);
-    auto inputPath = outpath ~ "/inputs";
-    mkdirRecurse(inputPath);
-    import std.path;
-    std.file.write(buildPath(outpath, "args"), originalArgs.join("\n"));
+    auto db = new DB(database);
+    scope (exit) db.cleanup;
+
+    auto model = db.get!ThemeModel(modelId);
 
     auto verses = MarkovChain!string(Interval(verseThemeArg).all);
     auto nameChain = MarkovChain!string(Interval(nameArg).all);
-    Bible[] bibles;
+    auto bookNameChain = MarkovChain!string(Interval(nameArg).all);
 
-    ulong[string] nameHistogram;
-    auto nlp = new NLP;
-    foreach (input; inputs)
+    foreach (book; db.booksByBible(model.bibleId))
     {
-        auto bible = readJSON!Bible(input);
-        tracef("bible %s has %s books", bible.name, bible.books.length);
-        bibles ~= bible;
-        foreach (name, freq; bible.nameHistogram)
+        bookNameChain.train([nameStart] ~ book.name.split("") ~ [nameEnd]);
+        auto sentences = db.sentencesByBook(book.id, model.id);
+        Appender!(string[]) a;
+        a ~= nameStart;
+        foreach (s; sentences)
         {
-            if (auto p = name in nameHistogram)
-            {
-                (*p) += freq;
-            }
-            else
-            {
-                nameHistogram[name] = freq;
-            }
+            a ~= s.token;
         }
+        a ~= nameEnd;
+        verses.train(a.data);
     }
-    tracef(
-            "read %s bibles, %s names",
-            bibles.length,
-            nameHistogram.length);
+    model.bookChain = bookNameChain.encodeBinary;
+    model.verseChain = verses.encodeBinary;
 
-    writeJSON(outpath ~ "/names.json", nameHistogram);
-    tracef("training character names");
-    foreach (name, v; nameHistogram)
+    auto bible = db.get!Bible(model.bibleId);
+    foreach (name, freq; bible.nameHistogram)
     {
-        nameChain.train(name.toLower.split(""));
+        nameChain.train([nameStart] ~ name.split("") ~ [nameEnd]);
     }
-    nameChain.encodeBinary(File(outpath ~ "/charnames.chain", "w"));
+    model.characterChain = nameChain.encodeBinary;
 
-    tracef("training theme sequences");
-    foreach (bible; bibles)
-    {
-        foreach (book; bible.books)
-        {
-            foreach (chapter; book.chapters)
-            {
-                auto themeSequence =
-                    chapter.verses
-                        .map!(x => x.theme)
-                        .filter!(x => x.length > 0)
-                        .array;
-                verses.train([nameStart] ~ themeSequence ~ [nameEnd]);
-            }
-            //tracef("trained %s book %s", bible.name, book.name);
-        }
-    }
-    verses.encodeBinary(File(outpath ~ "/verses.chain", "w"));
-
-    tracef("training book names");
-    auto names = MarkovChain!string(Interval(nameArg).all);
-    foreach (bible; bibles)
-    {
-        foreach (book; bible.books)
-        {
-            names.train([nameStart] ~ book.name.split("") ~ [nameEnd]);
-        }
-    }
-    names.encodeBinary(File(outpath ~ "/booknames.chain", "w"));
+    db.save(model);
 }
 
 struct BibleConfig
@@ -253,7 +185,7 @@ struct BibleConfig
 void generateBibleMain(string[] args)
 {
     ulong timeout = 300;
-    string model;
+    ulong modelId;
     uint seed = unpredictableSeed;
     string name = "Book of Squid";
     string outfile = "";
@@ -267,9 +199,12 @@ void generateBibleMain(string[] args)
     string chapterArg = "5-50";
     string verseArg = "12-150";
     string paragraphArg = "2-12";
+    string database;
     auto opts = getopt(args,
             std.getopt.config.required,
-            "m|model", "model name to use", &model,
+            "d|database", "database name", &database,
+            std.getopt.config.required,
+            "m|modelid", "model id to use", &modelId,
             "s|seed", "random seed", &seed,
             "n|name", "name of the Bible to generate", &name,
             "b|books", "range of books to generate", &bookArg,
@@ -294,6 +229,10 @@ void generateBibleMain(string[] args)
         return;
     }
 
+    auto db = new DB(database);
+    scope (exit) db.cleanup;
+    auto model = db.get!ThemeModel(modelId);
+
     if (chapterFactor < 1)
     {
         chapterFactor = 1 + (chapterFactor - cast(long)chapterFactor);
@@ -313,16 +252,15 @@ void generateBibleMain(string[] args)
     auto verseCount = Interval(verseArg);
     auto paragraphCount = Interval(paragraphArg);
 
-    auto modelPath = "models/" ~ model;
+    auto modelPath = "models/" ~ model.id.to!string;
 
-    trace("loading model file");
-    auto verses = decodeBinary!string(File(modelPath ~ "/verses.chain", "r"));
-    auto bookNames = decodeBinary!string(File(modelPath ~ "/booknames.chain", "r"));
-    auto charNames = decodeBinary!string(File(modelPath ~ "/charnames.chain", "r"));
+    trace("loading markov chains");
+    auto verses = decodeBinary!string(model.verseChain);
+    auto bookNames = decodeBinary!string(model.bookChain);
+    auto charNames = decodeBinary!string(model.characterChain);
     trace("loading themes");
-    auto themes = readJSON!ThemeModel(modelPath ~ "/themes.json");
-    themes.shuffle(seed);
-    themes.historyLength = history;
+    auto themes = db.get!ThemeModel(modelId);
+    themes.rng.seed(seed);
     trace("loaded themes");
 
     import std.datetime.systime;
@@ -330,8 +268,6 @@ void generateBibleMain(string[] args)
 
     // markov doesn't allow you to plug in your own RNG, so we need to seed the RNG multiple times
     rndGen.seed(seed);
-    Random nameGen;
-    nameGen.seed(seed);
     auto people = iota(500)
         .map!(x => charNames.generate(uniform(4, 10)).join(""))
         .map!titleCase
@@ -345,13 +281,14 @@ void generateBibleMain(string[] args)
     rndGen.seed(seed);
     Bible bible = new Bible;
     bible.name = name;
+    db.save(bible);
     foreach (person; people) bible.nameHistogram[person] = 0;
     auto numBooks = bookCount.uniform;
     bool[string] usedBookNames;
     foreach (booknum; 0 .. numBooks)
     {
         Book book = new Book;
-        import std.format : format;
+        book.bibleId = bible.id;
 
         foreach (attempt; 0 .. 10)
         {
@@ -360,6 +297,7 @@ void generateBibleMain(string[] args)
             usedBookNames[book.name] = true;
             break;
         }
+        db.save(book);
 
         auto numChapters = chapterCount.uniform;
         foreach (chapternum; 0 .. numChapters)
@@ -367,18 +305,38 @@ void generateBibleMain(string[] args)
             import std.string : strip;
             verses.reset;
             verses.seed(nameStart);
-            Chapter chapter = new Chapter;
-            chapter.chapter = cast(uint)(chapternum + 1);
+            version (jsonSave)
+            {
+                Chapter chapter = new Chapter;
+                chapter.chapter = cast(uint)(chapternum + 1);
+                book.chapters ~= chapter;
+            }
             uint kept = 0;
             ulong nextPara = paragraphCount.uniform(breaker);
+            ulong generated = 0;
             foreach (theme; verses.generate(verseCount.uniform))
             {
                 if (theme.length == 0) continue;
-                if (theme == nameEnd) break;
-                auto v = themes.toVerse(theme);
+                if (theme == nameEnd)
+                {
+                    if (generated in verseCount)
+                    {
+                        // We've reached our goal!
+                        break;
+                    }
+                    // We have some more space, let's continue.
+                    continue;
+                }
+                // Probably won't happen, but let's be cautious.
+                if (theme == nameStart) continue;
+                auto v = findFreeSentence(model, db, theme);
                 if (v is null) continue;
                 if (v.analyzed.length == 0) continue;
                 kept++;
+                generated++;
+                v.chapterNum = chapternum + 1;
+                v.bookId = book.id;
+                v.verse = generated;
                 foreach (lex; v.analyzed)
                 {
                     if (lex.word == nameEnd) break;
@@ -395,35 +353,33 @@ void generateBibleMain(string[] args)
                     lex.inflect = "_SP";
                     lex.person = -1;
                     v.analyzed ~= lex;
+                    kept = 0;
                 }
-                v.verse = cast(uint)chapter.verses.length + 1;
-                chapter.verses ~= v;
+                version (jsonSave) chapter.verses ~= v;
+                db.save(v);
             }
-            book.chapters ~= chapter;
-            tracef("built book %s/%s chapter %s/%s", booknum + 1, numBooks, chapternum + 1,
-                    numChapters);
         }
-        bible.books ~= book;
+        tracef("built book %s/%s", booknum + 1, numBooks);
+        version (jsonSave) bible.books ~= book;
     }
-save:
+
     import std.path : buildPath;
 
-    writeJSON(buildPath(modelPath, "gen-nlp-prename-%s.json".format(seed)), bible);
+    version (jsonSave)
+        writeJSON(buildPath(modelPath, "gen-nlp-prename-%s.json".format(seed)), bible);
 
-    swapNames(bible, people, chapterFactor, bookFactor);
+    //swapNames(bible, people, chapterFactor, bookFactor);
+    warning("name swapping to be implemented");
 
-    writeJSON(buildPath(modelPath, "gen-nlp-presynonym-%s.json".format(seed)), bible);
+    version (jsonSave)
+        writeJSON(buildPath(modelPath, "gen-nlp-presynonym-%s.json".format(seed)), bible);
 
-    if (dbFilename)
-    {
-        rndGen.seed(seed);
-        tracef("spicing things up with synonyms");
-        auto db = new DB(dbFilename);
-        replaceSynonyms(db, bible, synonymFactor);
-        db.cleanup;
-    }
+    rndGen.seed(seed);
+    tracef("spicing things up with synonyms");
+    replaceSynonyms(db, bible, synonymFactor);
 
-    writeJSON(buildPath(modelPath, "gen-nlp-only-%s.json".format(seed)), bible);
+    version (jsonSave)
+        writeJSON(buildPath(modelPath, "gen-nlp-only-%s.json".format(seed)), bible);
 
     import nt.nlp;
     new NLP().render(bible);
@@ -432,8 +388,11 @@ save:
     {
         outfile = name ~ ".json";
     }
-    tracef("saving bible json to %s", outfile);
-    writeJSON(outfile, bible);
+    version (jsonSave)
+    {
+        tracef("saving bible json to %s", outfile);
+        writeJSON(outfile, bible);
+    }
 
     import nt.publish;
     if (epubFile == "")
